@@ -23,6 +23,7 @@ export default function PatientBookAppointment() {
   const { patient, loading: authLoading } = usePatientAuth();
   const [doctors, setDoctors] = useState([]);
   const [availableSlots, setAvailableSlots] = useState([]);
+  const [availableDates, setAvailableDates] = useState([]);
   const [loading, setLoading] = useState(true);
   const [bookingLoading, setBookingLoading] = useState(false);
   const [selectedDoctor, setSelectedDoctor] = useState('');
@@ -57,6 +58,16 @@ export default function PatientBookAppointment() {
   }, [patient, authLoading, navigate]);
 
   useEffect(() => {
+    if (selectedDoctor) {
+      fetchAvailableDates();
+    } else {
+      setAvailableDates([]);
+      setSelectedDate('');
+      setSelectedSlot('');
+    }
+  }, [selectedDoctor]);
+
+  useEffect(() => {
     if (selectedDoctor && selectedDate) {
       fetchAvailableSlots();
     } else {
@@ -76,6 +87,20 @@ export default function PatientBookAppointment() {
       toast.error('Failed to load doctors');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchAvailableDates = async () => {
+    try {
+      const response = await patientBookingAPI.getAvailableDates({
+        doctorId: selectedDoctor
+      });
+      const data = extractData(response);
+      setAvailableDates(data.availableDates || []);
+    } catch (error) {
+      console.error('Error fetching available dates:', error);
+      toast.error('Failed to load available dates');
+      setAvailableDates([]);
     }
   };
 
@@ -143,6 +168,11 @@ export default function PatientBookAppointment() {
       return;
     }
 
+    if (!availableDates.includes(selectedDate)) {
+      toast.error('Please select an available date for this doctor');
+      return;
+    }
+
     if (!formData.patientName.trim() || !formData.contactNumber.trim()) {
       toast.error('Patient name and contact number are required');
       return;
@@ -152,14 +182,16 @@ export default function PatientBookAppointment() {
       setBookingLoading(true);
       
       const bookingData = {
-        doctorId: selectedDoctor,
+        doctorName: selectedDoctorInfo?.name,
         appointmentDate: selectedDate,
         appointmentTime: selectedSlot,
+        serviceType: selectedDoctorInfo?.specialty || 'General Consultation',
         patientType: formData.patientType,
         patientName: formData.patientName.trim(),
         contactNumber: formData.contactNumber.trim(),
-        reason: formData.reason.trim(),
+        reasonForVisit: formData.reason.trim(),
         dependentInfo: formData.patientType === 'dependent' ? {
+          name: formData.patientName.trim(),
           relationship: formData.dependentInfo.relationship.trim(),
           age: formData.dependentInfo.age
         } : undefined
@@ -391,11 +423,18 @@ export default function PatientBookAppointment() {
                           <h3 className="font-medium text-gray-900">Dr. {doctor.name}</h3>
                           <p className="text-sm text-gray-600">{doctor.specialty}</p>
                           <div className="mt-2">
-                            {doctor.schedule.map((sched, index) => (
-                              <p key={index} className="text-xs text-gray-500">
-                                {sched.day}: {sched.startTime} - {sched.endTime}
-                              </p>
-                            ))}
+                            {doctor.schedule && typeof doctor.schedule === 'object' ? 
+                              Object.entries(doctor.schedule).map(([day, hours], index) => (
+                                <p key={index} className="text-xs text-gray-500">
+                                  {day}: {hours}
+                                </p>
+                              )) : 
+                              doctor.workingDays?.map((day, index) => (
+                                <p key={index} className="text-xs text-gray-500">
+                                  {day}
+                                </p>
+                              ))
+                            }
                           </div>
                         </div>
                         {selectedDoctor === doctor._id && (
@@ -423,14 +462,72 @@ export default function PatientBookAppointment() {
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     Select Date
                   </label>
-                  <Input
-                    type="date"
-                    value={selectedDate}
-                    onChange={(e) => setSelectedDate(e.target.value)}
-                    min={getMinDate()}
-                    max={getMaxDate()}
-                    required
-                  />
+                  {availableDates.length > 0 && (
+                    <div className="mb-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                      <p className="text-sm text-blue-800 font-medium">
+                        📅 Available dates for Dr. {selectedDoctorInfo?.name}:
+                      </p>
+                      <p className="text-sm text-blue-600 mt-1">
+                        {availableDates.length} dates available in the next 3 months
+                      </p>
+                    </div>
+                  )}
+                  
+                  <div className="space-y-3">
+                    <Input
+                      type="date"
+                      value={selectedDate}
+                      onChange={(e) => setSelectedDate(e.target.value)}
+                      min={getMinDate()}
+                      max={getMaxDate()}
+                      required
+                      className={selectedDate && !availableDates.includes(selectedDate) ? 'border-red-300 focus:border-red-500 focus:ring-red-500' : ''}
+                    />
+                    
+                    {selectedDate && !availableDates.includes(selectedDate) && availableDates.length > 0 && (
+                      <div className="p-2 bg-red-50 border border-red-200 rounded text-sm text-red-700">
+                        ⚠️ This doctor is not available on this date. Please select from the available dates below.
+                      </div>
+                    )}
+                    
+                    {availableDates.length > 0 && (
+                      <div>
+                        <p className="text-sm font-medium text-gray-700 mb-2">
+                          Quick Select - Available Dates:
+                        </p>
+                        <div className="grid grid-cols-3 md:grid-cols-5 gap-2 max-h-40 overflow-y-auto border border-gray-200 rounded-lg p-3">
+                          {availableDates.slice(0, 15).map((date) => {
+                            const dateObj = new Date(date);
+                            const dayName = dateObj.toLocaleDateString('en-US', { weekday: 'short' });
+                            const dayNumber = dateObj.getDate();
+                            const monthName = dateObj.toLocaleDateString('en-US', { month: 'short' });
+                            
+                            return (
+                              <button
+                                key={date}
+                                type="button"
+                                onClick={() => setSelectedDate(date)}
+                                className={`p-2 text-xs border rounded-lg transition-colors flex flex-col items-center ${
+                                  selectedDate === date
+                                    ? 'border-clinic-600 bg-clinic-50 text-clinic-600'
+                                    : 'border-green-200 bg-green-50 hover:border-green-300 text-green-700'
+                                }`}
+                              >
+                                <span className="font-medium">{dayName}</span>
+                                <span className="text-lg font-bold">{dayNumber}</span>
+                                <span>{monthName}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                        {availableDates.length > 15 && (
+                          <p className="text-xs text-gray-500 mt-2">
+                            Showing first 15 available dates. Use the date picker above for more options.
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 {selectedDate && (

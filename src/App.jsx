@@ -1,6 +1,7 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth } from './hooks/useAuth';
 import { Toaster } from './components/ui/toaster';
+import { ToastContainer } from './components/ui/toast';
 import LoginPage from './pages/LoginPage';
 import DashboardLayout from './components/layout/DashboardLayout';
 import Dashboard from './pages/Dashboard';
@@ -17,6 +18,8 @@ import PatientLogin from './pages/PatientLogin';
 import PatientRegister from './pages/PatientRegister';
 import PatientDashboard from './pages/PatientDashboard';
 import PatientBookAppointment from './pages/PatientBookAppointment';
+import PatientAppointments from './pages/PatientAppointments';
+import PatientProfile from './pages/PatientProfile';
 
 function App() {
   const { user, loading } = useAuth();
@@ -48,6 +51,8 @@ function App() {
           <Route path="/patient/register" element={<PatientRegister />} />
           <Route path="/patient/dashboard" element={<PatientDashboard />} />
           <Route path="/patient/book-appointment" element={<PatientBookAppointment />} />
+          <Route path="/patient/appointments" element={<PatientAppointments />} />
+          <Route path="/patient/profile" element={<PatientProfile />} />
           
           {/* Protected Staff Routes */}
           <Route 
@@ -71,6 +76,7 @@ function App() {
         </Routes>
         
         <Toaster />
+        <ToastContainer />
       </div>
     </Router>
   );

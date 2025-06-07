@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { useEffect } from 'react';
 import { patientAuthAPI, handleAPIError, extractData } from '../lib/api';
-import { toast } from '../components/ui/toaster';
+import { toast } from '../components/ui/toast';
 
 const usePatientAuthStore = create((set, get) => ({
   patient: null,
