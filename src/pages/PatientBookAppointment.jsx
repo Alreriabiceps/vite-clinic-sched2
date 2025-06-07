@@ -1,0 +1,525 @@
+import { useState, useEffect } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card.jsx';
+import { Button } from '../components/ui/button.jsx';
+import { Input } from '../components/ui/input.jsx';
+import { LoadingSpinner } from '../components/ui/loading-spinner.jsx';
+import { usePatientAuth } from '../hooks/usePatientAuth.js';
+import { patientBookingAPI, extractData, handleAPIError } from '../lib/api.js';
+import { 
+  Heart, 
+  Calendar, 
+  Clock, 
+  User, 
+  ArrowLeft,
+  Stethoscope,
+  Baby,
+  CheckCircle
+} from 'lucide-react';
+import { toast } from '../components/ui/toaster';
+
+export default function PatientBookAppointment() {
+  const navigate = useNavigate();
+  const { patient, loading: authLoading } = usePatientAuth();
+  const [doctors, setDoctors] = useState([]);
+  const [availableSlots, setAvailableSlots] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [bookingLoading, setBookingLoading] = useState(false);
+  const [selectedDoctor, setSelectedDoctor] = useState('');
+  const [selectedDate, setSelectedDate] = useState('');
+  const [selectedSlot, setSelectedSlot] = useState('');
+  const [formData, setFormData] = useState({
+    patientType: 'self',
+    patientName: '',
+    contactNumber: '',
+    reason: '',
+    dependentInfo: {
+      relationship: '',
+      age: ''
+    }
+  });
+
+  useEffect(() => {
+    if (!patient && !authLoading) {
+      navigate('/patient/login');
+      return;
+    }
+
+    if (patient) {
+      fetchDoctors();
+      // Pre-fill form with patient info for self appointment
+      setFormData(prev => ({
+        ...prev,
+        patientName: patient.fullName,
+        contactNumber: patient.phoneNumber
+      }));
+    }
+  }, [patient, authLoading, navigate]);
+
+  useEffect(() => {
+    if (selectedDoctor && selectedDate) {
+      fetchAvailableSlots();
+    } else {
+      setAvailableSlots([]);
+      setSelectedSlot('');
+    }
+  }, [selectedDoctor, selectedDate]);
+
+  const fetchDoctors = async () => {
+    try {
+      setLoading(true);
+      const response = await patientBookingAPI.getDoctors();
+      const data = extractData(response);
+      setDoctors(data.doctors || []);
+    } catch (error) {
+      console.error('Error fetching doctors:', error);
+      toast.error('Failed to load doctors');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchAvailableSlots = async () => {
+    try {
+      const response = await patientBookingAPI.getAvailableSlots({
+        doctorId: selectedDoctor,
+        date: selectedDate
+      });
+      const data = extractData(response);
+      setAvailableSlots(data.slots || []);
+    } catch (error) {
+      console.error('Error fetching slots:', error);
+      toast.error('Failed to load available time slots');
+      setAvailableSlots([]);
+    }
+  };
+
+  const handleInputChange = (e) => {
+    const { name, value } = e.target;
+    
+    if (name.includes('.')) {
+      const [parent, child] = name.split('.');
+      setFormData(prev => ({
+        ...prev,
+        [parent]: {
+          ...prev[parent],
+          [child]: value
+        }
+      }));
+    } else {
+      setFormData(prev => ({
+        ...prev,
+        [name]: value
+      }));
+    }
+  };
+
+  const handlePatientTypeChange = (type) => {
+    setFormData(prev => ({
+      ...prev,
+      patientType: type,
+      patientName: type === 'self' ? patient.fullName : '',
+      contactNumber: type === 'self' ? patient.phoneNumber : ''
+    }));
+  };
+
+  const getMinDate = () => {
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    return tomorrow.toISOString().split('T')[0];
+  };
+
+  const getMaxDate = () => {
+    const maxDate = new Date();
+    maxDate.setMonth(maxDate.getMonth() + 3); // 3 months ahead
+    return maxDate.toISOString().split('T')[0];
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    
+    if (!selectedDoctor || !selectedDate || !selectedSlot) {
+      toast.error('Please select doctor, date, and time slot');
+      return;
+    }
+
+    if (!formData.patientName.trim() || !formData.contactNumber.trim()) {
+      toast.error('Patient name and contact number are required');
+      return;
+    }
+
+    try {
+      setBookingLoading(true);
+      
+      const bookingData = {
+        doctorId: selectedDoctor,
+        appointmentDate: selectedDate,
+        appointmentTime: selectedSlot,
+        patientType: formData.patientType,
+        patientName: formData.patientName.trim(),
+        contactNumber: formData.contactNumber.trim(),
+        reason: formData.reason.trim(),
+        dependentInfo: formData.patientType === 'dependent' ? {
+          relationship: formData.dependentInfo.relationship.trim(),
+          age: formData.dependentInfo.age
+        } : undefined
+      };
+
+      await patientBookingAPI.bookAppointment(bookingData);
+      
+      toast.success('Appointment booked successfully!');
+      navigate('/patient/dashboard');
+      
+    } catch (error) {
+      const errorMessage = handleAPIError(error);
+      toast.error(errorMessage);
+    } finally {
+      setBookingLoading(false);
+    }
+  };
+
+  if (authLoading || !patient) {
+    return (
+      <div className="min-h-screen clinic-gradient flex items-center justify-center">
+        <LoadingSpinner size="lg" />
+      </div>
+    );
+  }
+
+  const selectedDoctorInfo = doctors.find(d => d._id === selectedDoctor);
+
+  return (
+    <div className="min-h-screen clinic-gradient">
+      {/* Header */}
+      <header className="bg-white shadow-sm">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex justify-between items-center py-6">
+            <div className="flex items-center gap-3">
+              <Link to="/patient/dashboard" className="inline-flex items-center gap-2 text-clinic-600 hover:text-clinic-700">
+                <ArrowLeft className="h-4 w-4" />
+                Back to Dashboard
+              </Link>
+            </div>
+            <div className="flex items-center gap-2">
+              <Heart className="h-6 w-6 text-clinic-600" />
+              <h1 className="text-xl font-bold text-gray-900">Book Appointment</h1>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="mb-8">
+          <h2 className="text-3xl font-bold text-gray-900 mb-2">Book New Appointment</h2>
+          <p className="text-gray-600">Schedule your appointment with our experienced doctors.</p>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-8">
+          {/* Step 1: Select Patient Type */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <User className="h-5 w-5 text-clinic-600" />
+                Step 1: Who is this appointment for?
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div 
+                  className={`p-4 border-2 rounded-lg cursor-pointer transition-colors ${
+                    formData.patientType === 'self' 
+                      ? 'border-clinic-600 bg-clinic-50' 
+                      : 'border-gray-200 hover:border-gray-300'
+                  }`}
+                  onClick={() => handlePatientTypeChange('self')}
+                >
+                  <div className="flex items-center gap-3">
+                    <div className={`p-2 rounded-full ${
+                      formData.patientType === 'self' ? 'bg-clinic-600' : 'bg-gray-100'
+                    }`}>
+                      <User className={`h-5 w-5 ${
+                        formData.patientType === 'self' ? 'text-white' : 'text-gray-400'
+                      }`} />
+                    </div>
+                    <div>
+                      <h3 className="font-medium text-gray-900">Myself</h3>
+                      <p className="text-sm text-gray-600">Book appointment for yourself</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div 
+                  className={`p-4 border-2 rounded-lg cursor-pointer transition-colors ${
+                    formData.patientType === 'dependent' 
+                      ? 'border-clinic-600 bg-clinic-50' 
+                      : 'border-gray-200 hover:border-gray-300'
+                  }`}
+                  onClick={() => handlePatientTypeChange('dependent')}
+                >
+                  <div className="flex items-center gap-3">
+                    <div className={`p-2 rounded-full ${
+                      formData.patientType === 'dependent' ? 'bg-clinic-600' : 'bg-gray-100'
+                    }`}>
+                      <Heart className={`h-5 w-5 ${
+                        formData.patientType === 'dependent' ? 'text-white' : 'text-gray-400'
+                      }`} />
+                    </div>
+                    <div>
+                      <h3 className="font-medium text-gray-900">Family Member</h3>
+                      <p className="text-sm text-gray-600">Book for family member or dependent</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {formData.patientType === 'dependent' && (
+                <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Relationship
+                    </label>
+                    <Input
+                      name="dependentInfo.relationship"
+                      value={formData.dependentInfo.relationship}
+                      onChange={handleInputChange}
+                      placeholder="e.g., Child, Spouse, Parent"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Age
+                    </label>
+                    <Input
+                      type="number"
+                      name="dependentInfo.age"
+                      value={formData.dependentInfo.age}
+                      onChange={handleInputChange}
+                      placeholder="Age"
+                      min="0"
+                      max="120"
+                      required
+                    />
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Step 2: Patient Information */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Step 2: Patient Information</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Patient Name *
+                  </label>
+                  <Input
+                    name="patientName"
+                    value={formData.patientName}
+                    onChange={handleInputChange}
+                    placeholder="Enter patient name"
+                    required
+                    disabled={formData.patientType === 'self'}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Contact Number *
+                  </label>
+                  <Input
+                    name="contactNumber"
+                    value={formData.contactNumber}
+                    onChange={handleInputChange}
+                    placeholder="Enter contact number"
+                    required
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Reason for Visit
+                </label>
+                <textarea
+                  name="reason"
+                  value={formData.reason}
+                  onChange={handleInputChange}
+                  placeholder="Brief description of the reason for visit (optional)"
+                  rows={3}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-clinic-500 focus:border-transparent"
+                />
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Step 3: Select Doctor */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Step 3: Select Doctor</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {loading ? (
+                <div className="flex justify-center py-8">
+                  <LoadingSpinner />
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {doctors.map((doctor) => (
+                    <div
+                      key={doctor._id}
+                      className={`p-4 border-2 rounded-lg cursor-pointer transition-colors ${
+                        selectedDoctor === doctor._id
+                          ? 'border-clinic-600 bg-clinic-50'
+                          : 'border-gray-200 hover:border-gray-300'
+                      }`}
+                      onClick={() => setSelectedDoctor(doctor._id)}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className={`p-3 rounded-full ${
+                          doctor.specialty === 'OB-GYNE' ? 'bg-pink-100' : 'bg-blue-100'
+                        }`}>
+                          {doctor.specialty === 'OB-GYNE' ? (
+                            <Heart className="h-6 w-6 text-pink-600" />
+                          ) : (
+                            <Baby className="h-6 w-6 text-blue-600" />
+                          )}
+                        </div>
+                        <div className="flex-1">
+                          <h3 className="font-medium text-gray-900">Dr. {doctor.name}</h3>
+                          <p className="text-sm text-gray-600">{doctor.specialty}</p>
+                          <div className="mt-2">
+                            {doctor.schedule.map((sched, index) => (
+                              <p key={index} className="text-xs text-gray-500">
+                                {sched.day}: {sched.startTime} - {sched.endTime}
+                              </p>
+                            ))}
+                          </div>
+                        </div>
+                        {selectedDoctor === doctor._id && (
+                          <CheckCircle className="h-6 w-6 text-clinic-600" />
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Step 4: Select Date and Time */}
+          {selectedDoctor && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Step 4: Select Date and Time</CardTitle>
+                <CardDescription>
+                  Choose your preferred appointment date and time slot
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Select Date
+                  </label>
+                  <Input
+                    type="date"
+                    value={selectedDate}
+                    onChange={(e) => setSelectedDate(e.target.value)}
+                    min={getMinDate()}
+                    max={getMaxDate()}
+                    required
+                  />
+                </div>
+
+                {selectedDate && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Available Time Slots
+                    </label>
+                    {availableSlots.length > 0 ? (
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                        {availableSlots.map((slot, index) => (
+                          <button
+                            key={index}
+                            type="button"
+                            onClick={() => setSelectedSlot(slot)}
+                            className={`p-3 text-sm border rounded-lg transition-colors ${
+                              selectedSlot === slot
+                                ? 'border-clinic-600 bg-clinic-50 text-clinic-600'
+                                : 'border-gray-200 hover:border-gray-300'
+                            }`}
+                          >
+                            {slot}
+                          </button>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-gray-500 text-sm">No available slots for this date</p>
+                    )}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Booking Summary & Submit */}
+          {selectedDoctor && selectedDate && selectedSlot && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Booking Summary</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="bg-gray-50 p-4 rounded-lg space-y-2">
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Doctor:</span>
+                    <span className="font-medium">Dr. {selectedDoctorInfo?.name}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Specialty:</span>
+                    <span className="font-medium">{selectedDoctorInfo?.specialty}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Patient:</span>
+                    <span className="font-medium">{formData.patientName}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Date:</span>
+                    <span className="font-medium">{new Date(selectedDate).toLocaleDateString()}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Time:</span>
+                    <span className="font-medium">{selectedSlot}</span>
+                  </div>
+                  {formData.reason && (
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Reason:</span>
+                      <span className="font-medium">{formData.reason}</span>
+                    </div>
+                  )}
+                </div>
+
+                <Button 
+                  type="submit" 
+                  className="w-full" 
+                  size="lg"
+                  disabled={bookingLoading}
+                >
+                  {bookingLoading ? (
+                    <>
+                      <LoadingSpinner size="sm" />
+                      Booking Appointment...
+                    </>
+                  ) : (
+                    'Confirm Booking'
+                  )}
+                </Button>
+              </CardContent>
+            </Card>
+          )}
+        </form>
+      </main>
+    </div>
+  );
+} 
