@@ -20,39 +20,17 @@ export default function PatientRegister() {
     confirmPassword: '',
     phoneNumber: '',
     dateOfBirth: '',
-    gender: '',
-    address: {
-      street: '',
-      city: '',
-      province: '',
-      zipCode: ''
-    },
-    emergencyContact: {
-      name: '',
-      relationship: '',
-      phoneNumber: ''
-    }
+    gender: ''
   });
   const [errors, setErrors] = useState({});
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
     
-    if (name.includes('.')) {
-      const [parent, child] = name.split('.');
-      setFormData(prev => ({
-        ...prev,
-        [parent]: {
-          ...prev[parent],
-          [child]: value
-        }
-      }));
-    } else {
-      setFormData(prev => ({
-        ...prev,
-        [name]: value
-      }));
-    }
+    setFormData(prev => ({
+      ...prev,
+      [name]: value
+    }));
     
     // Clear error when user starts typing
     if (errors[name]) {
@@ -102,7 +80,7 @@ export default function PatientRegister() {
     if (formData.dateOfBirth) {
       const birthDate = new Date(formData.dateOfBirth);
       const today = new Date();
-      const age = today.getFullYear() - birthDate.getFullYear();
+      let age = today.getFullYear() - birthDate.getFullYear();
       const monthDiff = today.getMonth() - birthDate.getMonth();
       
       if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
@@ -279,104 +257,6 @@ export default function PatientRegister() {
                   {errors.gender && (
                     <p className="text-red-500 text-sm mt-1">{errors.gender}</p>
                   )}
-                </div>
-              </div>
-
-              {/* Address Information */}
-              <div className="space-y-4">
-                <h3 className="text-lg font-medium text-gray-900">Address Information</h3>
-                
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Street Address
-                  </label>
-                  <Input
-                    name="address.street"
-                    value={formData.address.street}
-                    onChange={handleInputChange}
-                    placeholder="Enter your street address"
-                  />
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      City
-                    </label>
-                    <Input
-                      name="address.city"
-                      value={formData.address.city}
-                      onChange={handleInputChange}
-                      placeholder="City"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Province
-                    </label>
-                    <Input
-                      name="address.province"
-                      value={formData.address.province}
-                      onChange={handleInputChange}
-                      placeholder="Province"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      ZIP Code
-                    </label>
-                    <Input
-                      name="address.zipCode"
-                      value={formData.address.zipCode}
-                      onChange={handleInputChange}
-                      placeholder="ZIP Code"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Emergency Contact */}
-              <div className="space-y-4">
-                <h3 className="text-lg font-medium text-gray-900">Emergency Contact</h3>
-                
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Contact Name
-                    </label>
-                    <Input
-                      name="emergencyContact.name"
-                      value={formData.emergencyContact.name}
-                      onChange={handleInputChange}
-                      placeholder="Emergency contact name"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Relationship
-                    </label>
-                    <Input
-                      name="emergencyContact.relationship"
-                      value={formData.emergencyContact.relationship}
-                      onChange={handleInputChange}
-                      placeholder="Relationship (e.g., Spouse, Parent)"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Emergency Contact Phone
-                  </label>
-                  <Input
-                    name="emergencyContact.phoneNumber"
-                    value={formData.emergencyContact.phoneNumber}
-                    onChange={handleInputChange}
-                    placeholder="Emergency contact phone number"
-                  />
                 </div>
               </div>
 

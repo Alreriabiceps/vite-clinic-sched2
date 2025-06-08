@@ -7,8 +7,10 @@ import { Users, Plus, Search, Filter, Baby, Heart, Calendar, Phone, MapPin, Edit
 import { patientsAPI } from '../lib/api';
 import PatientRegistrationModal from '../components/forms/PatientRegistrationModal';
 import { toast } from '../components/ui/toast';
+import { useNavigate } from 'react-router-dom';
 
 export default function Patients() {
+  const navigate = useNavigate();
   const [patients, setPatients] = useState([]);
   const [stats, setStats] = useState({
     totalPatients: 0,
@@ -59,8 +61,12 @@ export default function Patients() {
         ...(selectedType && { type: selectedType })
       };
 
+      console.log('Fetching patients with params:', params);
       const response = await patientsAPI.getAll(params);
-      const data = response.data;
+      const data = response.data.data;
+      
+      console.log('Patient list response:', data);
+      console.log('Patients found:', data.patients?.length || 0);
       
       setPatients(data.patients || []);
       setTotalPages(data.pagination?.pages || 1);
@@ -76,22 +82,31 @@ export default function Patients() {
 
   const fetchStats = async () => {
     try {
-      const response = await patientsAPI.search({ limit: 1 });
-      const total = response.data?.pagination?.total || 0;
+      const response = await patientsAPI.getStats();
+      const data = response.data;
       
-      // Fetch type-specific counts
-      const [pediatricResponse, obgyneResponse] = await Promise.all([
-        patientsAPI.search({ type: 'pediatric', limit: 1 }).catch(() => ({ data: { pagination: { total: 0 } } })),
-        patientsAPI.search({ type: 'obgyne', limit: 1 }).catch(() => ({ data: { pagination: { total: 0 } } }))
-      ]);
+      console.log('Patient stats response:', data);
 
       setStats({
-        totalPatients: total,
-        pediatricPatients: pediatricResponse.data?.pagination?.total || 0,
-        obgynePatients: obgyneResponse.data?.pagination?.total || 0
+        totalPatients: data.totalPatients || 0,
+        pediatricPatients: data.pediatricPatients || 0,
+        obgynePatients: data.obgynePatients || 0
       });
     } catch (error) {
       console.error('Error fetching stats:', error);
+      // Fallback to search method if stats endpoint fails
+      try {
+        const response = await patientsAPI.search({ limit: 1 });
+        const total = response.data?.pagination?.total || 0;
+        
+        setStats({
+          totalPatients: total,
+          pediatricPatients: 0,
+          obgynePatients: 0
+        });
+      } catch (fallbackError) {
+        console.error('Fallback stats error:', fallbackError);
+      }
     }
   };
 
@@ -170,15 +185,35 @@ export default function Patients() {
   };
 
   const getPatientDisplayName = (patient) => {
-    const { personalInfo } = patient;
-    return `${personalInfo.firstName} ${personalInfo.lastName}`;
+    if (patient.patientType === 'pediatric') {
+      return patient.pediatricRecord?.nameOfChildren || 'Pediatric Patient';
+    } else {
+      return patient.obGyneRecord?.patientName || 'OB-GYNE Patient';
+    }
   };
 
   const getPatientSecondaryInfo = (patient) => {
-    if (patient.patientType === 'pediatric' && patient.pediatricInfo?.motherName) {
-      return `Mother: ${patient.pediatricInfo.motherName}`;
+    if (patient.patientType === 'pediatric') {
+      return `Mother: ${patient.pediatricRecord?.nameOfMother || 'N/A'}`;
     }
-    return `Contact: ${patient.personalInfo.contactNumber}`;
+    return `Contact: ${patient.obGyneRecord?.contactNumber || 'N/A'}`;
+  };
+
+  const getPatientBirthDate = (patient) => {
+    if (patient.patientType === 'pediatric') {
+      return patient.pediatricRecord?.birthDate;
+    } else {
+      return patient.obGyneRecord?.birthDate;
+    }
+  };
+
+  const getStatusBadgeColor = (status) => {
+    switch (status) {
+      case 'Active': return 'bg-green-100 text-green-800';
+      case 'New': return 'bg-blue-100 text-blue-800';
+      case 'Inactive': return 'bg-gray-100 text-gray-800';
+      default: return 'bg-gray-100 text-gray-800';
+    }
   };
 
   return (
@@ -377,22 +412,23 @@ export default function Patients() {
                             {getPatientDisplayName(patient)}
                           </h3>
                           <span className="text-xs bg-white px-2 py-1 rounded border">
-                            {patient.patientNumber}
+                            {patient.patientId || patient._id}
                           </span>
                         </div>
                         
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-2 text-sm text-gray-600">
                           <div className="flex items-center gap-1">
                             <Calendar className="h-3 w-3" />
-                            <span>Age: {calculateAge(patient.personalInfo.dateOfBirth)}</span>
+                            <span>Age: {calculateAge(getPatientBirthDate(patient))}</span>
                           </div>
                           <div className="flex items-center gap-1">
                             <Phone className="h-3 w-3" />
-                            <span>{patient.personalInfo.contactNumber}</span>
+                            <span>{patient.contactInfo?.phoneNumber || 'N/A'}</span>
                           </div>
                           <div className="flex items-center gap-1">
-                            <MapPin className="h-3 w-3" />
-                            <span className="truncate">{patient.personalInfo.address}</span>
+                            <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusBadgeColor(patient.status)}`}>
+                              {patient.status || 'New'}
+                            </span>
                           </div>
                         </div>
                         
@@ -406,13 +442,21 @@ export default function Patients() {
                       </div>
                       
                       <div className="flex gap-2 ml-4">
-                        <Button variant="outline" size="sm">
+                        <Button 
+                          variant="outline" 
+                          size="sm"
+                          onClick={() => navigate(`/patients/${patient._id}`)}
+                        >
                           <Eye className="h-3 w-3 mr-1" />
                           View
                         </Button>
-                        <Button variant="outline" size="sm">
+                        <Button 
+                          variant="outline" 
+                          size="sm"
+                          onClick={() => navigate(`/patients/${patient._id}`)}
+                        >
                           <Edit className="h-3 w-3 mr-1" />
-                          Edit
+                          Manage
                         </Button>
                       </div>
                     </div>
