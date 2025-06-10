@@ -236,7 +236,7 @@ export default function Patients() {
           <Button 
             variant="clinic" 
             className="flex items-center gap-2"
-            onClick={() => openRegistrationModal('obgyne')}
+            onClick={() => openRegistrationModal('ob-gyne')}
           >
             <Heart className="h-4 w-4" />
             New OB-GYNE
@@ -379,7 +379,7 @@ export default function Patients() {
                   </Button>
                   <Button 
                     variant="clinic"
-                    onClick={() => openRegistrationModal('obgyne')}
+                    onClick={() => openRegistrationModal('ob-gyne')}
                   >
                     <Heart className="h-4 w-4 mr-2" />
                     Register OB-GYNE Patient

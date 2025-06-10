@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card.jsx';
 import { Button } from '../components/ui/button.jsx';
-import { Heart, Stethoscope, Baby, Calendar, Clock, Shield, Phone } from 'lucide-react';
+import { Heart, Stethoscope, Baby, Calendar, Clock, Shield, Phone, MapPin } from 'lucide-react';
 
 export default function PatientPortal() {
   return (
@@ -169,14 +169,18 @@ export default function PatientPortal() {
         <div className="mt-12 text-center">
           <h4 className="text-lg font-semibold text-gray-900 mb-4">Need Help?</h4>
           <div className="flex flex-col sm:flex-row justify-center gap-6 text-sm text-gray-600">
-            <div>
-              <strong>Phone:</strong> (123) 456-7890
+            <div className="flex items-center justify-center gap-2">
+              <Phone className="h-4 w-4" />
+              <a href="tel:09626952050" className="hover:text-clinic-600">
+                0962 695 2050
+              </a>
+            </div>
+            <div className="flex items-center justify-center gap-2">
+              <MapPin className="h-4 w-4" />
+              <span>San Nicolas Arayat Pampanga</span>
             </div>
             <div>
-              <strong>Email:</strong> info@vmclinic.com
-            </div>
-            <div>
-              <strong>Hours:</strong> Mon-Fri 8AM-5PM
+              <span className="text-gray-500">(Beside "Buff. It Up Auto Spa and Detailing" and In front of INC-San Nicolas)</span>
             </div>
           </div>
         </div>

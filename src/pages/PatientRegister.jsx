@@ -6,6 +6,7 @@ import { Input } from '../components/ui/input.jsx';
 import { LoadingSpinner } from '../components/ui/loading-spinner.jsx';
 import { usePatientAuth } from '../hooks/usePatientAuth.js';
 import { Heart, ArrowLeft, Eye, EyeOff } from 'lucide-react';
+import { Checkbox } from '../components/ui/checkbox.jsx';
 
 export default function PatientRegister() {
   const navigate = useNavigate();
@@ -20,7 +21,8 @@ export default function PatientRegister() {
     confirmPassword: '',
     phoneNumber: '',
     dateOfBirth: '',
-    gender: ''
+    gender: '',
+    consent: false
   });
   const [errors, setErrors] = useState({});
 
@@ -53,6 +55,7 @@ export default function PatientRegister() {
     if (!formData.phoneNumber.trim()) newErrors.phoneNumber = 'Phone number is required';
     if (!formData.dateOfBirth) newErrors.dateOfBirth = 'Date of birth is required';
     if (!formData.gender) newErrors.gender = 'Gender is required';
+    if (!formData.consent) newErrors.consent = 'You must agree to the terms and conditions';
 
     // Email validation
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -264,72 +267,102 @@ export default function PatientRegister() {
               <div className="space-y-4">
                 <h3 className="text-lg font-medium text-gray-900">Account Security</h3>
                 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Password *
-                    </label>
-                    <div className="relative">
-                      <Input
-                        type={showPassword ? 'text' : 'password'}
-                        name="password"
-                        value={formData.password}
-                        onChange={handleInputChange}
-                        placeholder="Enter your password"
-                        className={errors.password ? 'border-red-500' : ''}
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowPassword(!showPassword)}
-                        className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                      >
-                        {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                      </button>
-                    </div>
-                    {errors.password && (
-                      <p className="text-red-500 text-sm mt-1">{errors.password}</p>
-                    )}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Password *
+                  </label>
+                  <div className="relative">
+                    <Input
+                      type={showPassword ? "text" : "password"}
+                      name="password"
+                      value={formData.password}
+                      onChange={handleInputChange}
+                      placeholder="Create a password"
+                      className={errors.password ? 'border-red-500' : ''}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    >
+                      {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
                   </div>
+                  {errors.password && (
+                    <p className="text-red-500 text-sm mt-1">{errors.password}</p>
+                  )}
+                </div>
 
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Confirm Password *
-                    </label>
-                    <div className="relative">
-                      <Input
-                        type={showConfirmPassword ? 'text' : 'password'}
-                        name="confirmPassword"
-                        value={formData.confirmPassword}
-                        onChange={handleInputChange}
-                        placeholder="Confirm your password"
-                        className={errors.confirmPassword ? 'border-red-500' : ''}
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                        className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                      >
-                        {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                      </button>
-                    </div>
-                    {errors.confirmPassword && (
-                      <p className="text-red-500 text-sm mt-1">{errors.confirmPassword}</p>
-                    )}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Confirm Password *
+                  </label>
+                  <div className="relative">
+                    <Input
+                      type={showConfirmPassword ? "text" : "password"}
+                      name="confirmPassword"
+                      value={formData.confirmPassword}
+                      onChange={handleInputChange}
+                      placeholder="Confirm your password"
+                      className={errors.confirmPassword ? 'border-red-500' : ''}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                      className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    >
+                      {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
                   </div>
+                  {errors.confirmPassword && (
+                    <p className="text-red-500 text-sm mt-1">{errors.confirmPassword}</p>
+                  )}
                 </div>
               </div>
 
+              {/* Consent */}
+              <div className="space-y-2">
+                <div className="flex items-start space-x-2">
+                  <Checkbox
+                    id="consent"
+                    checked={formData.consent}
+                    onCheckedChange={(checked) => setFormData({ ...formData, consent: checked })}
+                  />
+                  <div className="grid gap-1.5 leading-none">
+                    <label
+                      htmlFor="consent"
+                      className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                    >
+                      I agree to the Terms of Service and Privacy Policy
+                    </label>
+                    <p className="text-sm text-muted-foreground">
+                      By checking this box, you consent to our{' '}
+                      <Link to="/terms-of-service" className="text-clinic-600 hover:underline">
+                        Terms of Service
+                      </Link>{' '}
+                      and{' '}
+                      <Link to="/privacy-policy" className="text-clinic-600 hover:underline">
+                        Privacy Policy
+                      </Link>
+                      . You agree to the collection and use of your personal information as described in these documents.
+                    </p>
+                  </div>
+                </div>
+                {errors.consent && (
+                  <p className="text-sm text-red-500">{errors.consent}</p>
+                )}
+              </div>
+
               {/* Submit Button */}
-              <div className="pt-4">
-                <Button 
-                  type="submit" 
-                  className="w-full" 
-                  size="lg"
+              <div className="pt-6">
+                <Button
+                  type="submit"
+                  className="w-full"
                   disabled={loading}
                 >
                   {loading ? (
                     <>
-                      <LoadingSpinner size="sm" />
+                      <LoadingSpinner size="sm" className="mr-2" />
                       Creating Account...
                     </>
                   ) : (

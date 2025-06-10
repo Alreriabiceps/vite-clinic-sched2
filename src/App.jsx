@@ -20,6 +20,8 @@ import PatientDashboard from './pages/PatientDashboard';
 import PatientBookAppointment from './pages/PatientBookAppointment';
 import PatientAppointments from './pages/PatientAppointments';
 import PatientProfile from './pages/PatientProfile';
+import PrivacyPolicy from './pages/PrivacyPolicy';
+import TermsOfService from './pages/TermsOfService';
 
 function App() {
   const { user, loading } = useAuth();
@@ -67,6 +69,10 @@ function App() {
             <Route path="reports" element={<Reports />} />
             <Route path="settings" element={<Settings />} />
           </Route>
+          
+          {/* Privacy Policy and Terms of Service Routes */}
+          <Route path="/privacy-policy" element={<PrivacyPolicy />} />
+          <Route path="/terms-of-service" element={<TermsOfService />} />
           
           {/* Default route - redirect to patient portal */}
           <Route 

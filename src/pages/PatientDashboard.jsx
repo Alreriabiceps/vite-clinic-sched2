@@ -176,13 +176,13 @@ export default function PatientDashboard() {
             </Link>
           </Card>
 
-          <Card className="hover:shadow-lg transition-shadow cursor-pointer" onClick={() => window.open('tel:+639123456789')}>
+          <Card className="hover:shadow-lg transition-shadow cursor-pointer" onClick={() => window.open('tel:09626952050')}>
             <CardContent className="p-6 text-center">
               <div className="p-3 bg-purple-100 rounded-full w-fit mx-auto mb-4">
                 <Phone className="h-8 w-8 text-purple-600" />
               </div>
               <h3 className="font-semibold text-gray-900 mb-2">Contact Clinic</h3>
-              <p className="text-sm text-purple-600 font-medium hover:underline">+63 912 345 6789</p>
+              <p className="text-sm text-purple-600 font-medium hover:underline">0962 695 2050</p>
               <p className="text-xs text-gray-500 mt-1">Click to call</p>
             </CardContent>
           </Card>

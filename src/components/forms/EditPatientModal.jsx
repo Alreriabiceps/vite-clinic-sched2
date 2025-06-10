@@ -1,313 +1,318 @@
 import React, { useState, useEffect } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../ui/card';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { LoadingSpinner } from '../ui/loading-spinner';
-import { X, Save, User, Baby, Heart } from 'lucide-react';
+import { X, User, Baby, Heart, Stethoscope, ShieldCheck, Beaker, PlusCircle } from 'lucide-react';
 import { patientsAPI } from '../../lib/api';
 import { toast } from '../ui/toast';
+import { Checkbox } from '../ui/checkbox';
 
 const EditPatientModal = ({ patient, onClose, onSuccess }) => {
   const [formData, setFormData] = useState({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  const isPediatric = patient?.patientType === 'pediatric';
-
   useEffect(() => {
-    if (patient) {
-      if (isPediatric) {
-        const record = patient.pediatricRecord || {};
-        setFormData({
-          nameOfChildren: record.nameOfChildren || '',
-          nameOfMother: record.nameOfMother || '',
-          nameOfFather: record.nameOfFather || '',
-          contactNumber: record.contactNumber || '',
-          address: record.address || '',
-          birthDate: record.birthDate ? record.birthDate.split('T')[0] : '',
-          birthWeight: record.birthWeight || '',
-          birthLength: record.birthLength || ''
-        });
-      } else {
-        const record = patient.obGyneRecord || {};
-        setFormData({
-          patientName: record.patientName || '',
-          contactNumber: record.contactNumber || '',
-          address: record.address || '',
-          birthDate: record.birthDate ? record.birthDate.split('T')[0] : '',
-          civilStatus: record.civilStatus || '',
-          occupation: record.occupation || ''
-        });
-      }
+    // When the patient data is available, populate the form
+    if (patient && patient.obGyneRecord) {
+      // Merge emergencyContact from contactInfo if present
+      setFormData({
+        ...patient.obGyneRecord,
+        emergencyContact: patient.contactInfo?.emergencyContact || patient.obGyneRecord.emergencyContact || { name: '', contactNumber: '' }
+      });
     }
-  }, [patient, isPediatric]);
+  }, [patient]);
 
-  const handleInputChange = (field, value) => {
+  const handleChange = (e) => {
+    const { name, value, type, checked } = e.target;
+    const val = type === 'checkbox' ? checked : value;
+
+    const keys = name.split('.');
+    if (keys.length > 1) {
+      setFormData(prev => {
+        const newState = { ...prev };
+        let current = newState;
+        for (let i = 0; i < keys.length - 1; i++) {
+          // Initialize nested object if it doesn't exist
+          if (!current[keys[i]]) {
+            current[keys[i]] = {};
+          }
+          current = current[keys[i]];
+        }
+        current[keys[keys.length - 1]] = val;
+        return newState;
+      });
+    } else {
+      setFormData(prev => ({ ...prev, [name]: val }));
+    }
+  };
+
+  const handleObstetricHistoryChange = (index, e) => {
+    const { name, value } = e.target;
+    const list = [...(formData.obstetricHistory || [])];
+    list[index][name] = value;
+    setFormData(prev => ({ ...prev, obstetricHistory: list }));
+  };
+
+  const addObstetricHistoryRow = () => {
+    const newRow = { year: '', place: '', typeOfDelivery: '', bw: '', complications: '' };
     setFormData(prev => ({
       ...prev,
-      [field]: value
+      obstetricHistory: [...(prev.obstetricHistory || []), newRow]
     }));
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
-    setError('');
+    setError(null);
 
     try {
-      const updateData = {
-        patientType: patient.patientType,
-        status: patient.status
+      // Clean the form data: convert empty strings to null
+      let cleanedForm = JSON.parse(JSON.stringify(formData), (key, value) => value === '' ? null : value);
+
+      // Convert number fields to numbers (or null)
+      const toNumberOrNull = v => v === null || v === undefined || v === '' ? null : isNaN(Number(v)) ? null : Number(v);
+      cleanedForm.age = toNumberOrNull(cleanedForm.age);
+      if (cleanedForm.gynecologicHistory) {
+        cleanedForm.gynecologicHistory.gravidity = toNumberOrNull(cleanedForm.gynecologicHistory.gravidity);
+        cleanedForm.gynecologicHistory.parity = toNumberOrNull(cleanedForm.gynecologicHistory.parity);
+        cleanedForm.gynecologicHistory.menarche = toNumberOrNull(cleanedForm.gynecologicHistory.menarche);
+        cleanedForm.gynecologicHistory.intervalDays = toNumberOrNull(cleanedForm.gynecologicHistory.intervalDays);
+        cleanedForm.gynecologicHistory.durationDays = toNumberOrNull(cleanedForm.gynecologicHistory.durationDays);
+        cleanedForm.gynecologicHistory.coitarche = toNumberOrNull(cleanedForm.gynecologicHistory.coitarche);
+        cleanedForm.gynecologicHistory.sexualPartners = toNumberOrNull(cleanedForm.gynecologicHistory.sexualPartners);
+      }
+      if (Array.isArray(cleanedForm.obstetricHistory)) {
+        cleanedForm.obstetricHistory = cleanedForm.obstetricHistory.map(row => ({
+          ...row,
+          year: toNumberOrNull(row.year)
+        }));
+      }
+      // Build the payload: move emergencyContact to contactInfo
+      const dataToSend = {
+        obGyneRecord: { ...cleanedForm, emergencyContact: undefined },
+        contactInfo: { emergencyContact: cleanedForm.emergencyContact }
       };
 
-      if (isPediatric) {
-        updateData.pediatricRecord = {
-          ...patient.pediatricRecord,
-          ...formData
-        };
-      } else {
-        updateData.obGyneRecord = {
-          ...patient.obGyneRecord,
-          ...formData
-        };
-      }
+      console.log('Sending update data:', JSON.stringify(dataToSend, null, 2));
 
-      const response = await patientsAPI.update(patient._id, updateData);
-      
+      await patientsAPI.update(patient._id, dataToSend);
+
       toast.success('Patient updated successfully!');
-      onSuccess && onSuccess(response.data.patient);
+      onSuccess && onSuccess();
+      onClose();
     } catch (error) {
       console.error('Error updating patient:', error);
-      setError('Failed to update patient. Please try again.');
-      toast.error('Failed to update patient');
+      const errorMessage = error.response?.data?.message || 'Failed to update patient. Please try again.';
+      setError(errorMessage);
+      toast.error(errorMessage);
     } finally {
       setLoading(false);
     }
   };
+  
+  // Guard against rendering with no data
+  if (!formData.patientName) {
+    return (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-lg p-8">
+                <LoadingSpinner />
+            </div>
+        </div>
+    );
+  }
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+      <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-y-auto">
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
-            <CardTitle className="flex items-center space-x-2">
-              {isPediatric ? <Baby className="h-5 w-5" /> : <Heart className="h-5 w-5" />}
-              <span>Edit {isPediatric ? 'Pediatric' : 'OB-GYNE'} Patient</span>
-            </CardTitle>
-            <Button variant="outline" size="sm" onClick={onClose}>
-              <X className="h-4 w-4" />
-            </Button>
+          <CardHeader className="sticky top-0 bg-white z-10">
+            <div className="flex justify-between items-center">
+                <CardTitle className="flex items-center gap-2">
+                    <Heart className="h-5 w-5" />
+                    Edit OB-GYNE Patient
+                </CardTitle>
+                <Button variant="ghost" size="icon" onClick={onClose}>
+                    <X className="h-5 w-5" />
+                </Button>
+            </div>
+            <CardDescription>Update the patient's information below.</CardDescription>
           </CardHeader>
-          
           <CardContent>
             {error && (
-              <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
-                <p className="text-red-800 text-sm">{error}</p>
+              <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-800 rounded-lg">
+                {error}
               </div>
             )}
+            <form onSubmit={handleSubmit} className="space-y-8">
+                {/* Personal Info */}
+                <div className="p-4 border rounded-lg">
+                    <h3 className="text-lg font-semibold flex items-center gap-2 mb-4"><User className="h-5 w-5" /> Patient Information</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                        <Input name="patientName" value={formData.patientName || ''} onChange={handleChange} placeholder="Patient's Name (Surname, First, Middle)" className="md:col-span-2" />
+                        <Input name="age" value={formData.age || ''} onChange={handleChange} placeholder="Age" type="number" />
+                        <Input name="birthDate" value={formData.birthDate?.split('T')[0] || ''} onChange={handleChange} placeholder="Date of Birth" type="date" />
+                        
+                        <Input name="address" value={formData.address || ''} onChange={handleChange} placeholder="Address" className="md:col-span-4" />
+                        
+                        <Input name="contactNumber" value={formData.contactNumber || ''} onChange={handleChange} placeholder="Contact #" />
+                        <Input name="occupation" value={formData.occupation || ''} onChange={handleChange} placeholder="Occupation" />
+                        
+                        <select name="civilStatus" value={formData.civilStatus || ''} onChange={handleChange} className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                          <option value="">Select Civil Status</option>
+                          <option value="Single">Single</option>
+                          <option value="Married">Married</option>
+                          <option value="Divorced">Divorced</option>
+                          <option value="Widowed">Widowed</option>
+                        </select>
+                        
+                        <Input name="religion" value={formData.religion || ''} onChange={handleChange} placeholder="Religion" />
 
-            <form onSubmit={handleSubmit} className="space-y-4">
-              {isPediatric ? (
-                <>
-                  {/* Pediatric Form Fields */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Child's Name *
-                      </label>
-                      <Input
-                        type="text"
-                        value={formData.nameOfChildren || ''}
-                        onChange={(e) => handleInputChange('nameOfChildren', e.target.value)}
-                        required
-                        placeholder="Enter child's full name"
-                      />
+                        <Input name="referredBy" value={formData.referredBy || ''} onChange={handleChange} placeholder="Referred By" className="md:col-span-2"/>
+                        <Input name="emergencyContact.name" value={formData.emergencyContact?.name || ''} onChange={handleChange} placeholder="Emergency Contact Person" />
+                        <Input name="emergencyContact.contactNumber" value={formData.emergencyContact?.contactNumber || ''} onChange={handleChange} placeholder="Emergency Contact #" />
                     </div>
+                </div>
 
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Birth Date
-                      </label>
-                      <Input
-                        type="date"
-                        value={formData.birthDate || ''}
-                        onChange={(e) => handleInputChange('birthDate', e.target.value)}
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Mother's Name
-                      </label>
-                      <Input
-                        type="text"
-                        value={formData.nameOfMother || ''}
-                        onChange={(e) => handleInputChange('nameOfMother', e.target.value)}
-                        placeholder="Enter mother's full name"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Father's Name
-                      </label>
-                      <Input
-                        type="text"
-                        value={formData.nameOfFather || ''}
-                        onChange={(e) => handleInputChange('nameOfFather', e.target.value)}
-                        placeholder="Enter father's full name"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Contact Number
-                      </label>
-                      <Input
-                        type="tel"
-                        value={formData.contactNumber || ''}
-                        onChange={(e) => handleInputChange('contactNumber', e.target.value)}
-                        placeholder="Contact number"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Birth Weight
-                      </label>
-                      <Input
-                        type="text"
-                        value={formData.birthWeight || ''}
-                        onChange={(e) => handleInputChange('birthWeight', e.target.value)}
-                        placeholder="e.g., 3.2 kg"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Birth Length
-                      </label>
-                      <Input
-                        type="text"
-                        value={formData.birthLength || ''}
-                        onChange={(e) => handleInputChange('birthLength', e.target.value)}
-                        placeholder="e.g., 50 cm"
-                      />
-                    </div>
+                {/* History Section */}
+                <div className="p-4 border rounded-lg">
+                  <h3 className="text-lg font-semibold flex items-center gap-2 mb-4"><Stethoscope className="h-5 w-5" /> History</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4">
+                      <div>
+                        <h4 className="font-medium mb-2">Past Medical History</h4>
+                        <div className="space-y-2">
+                            <label className="flex items-center gap-2 text-sm"><Checkbox name="pastMedicalHistory.hypertension" checked={formData.pastMedicalHistory?.hypertension || false} onCheckedChange={(c) => handleChange({target: {name: 'pastMedicalHistory.hypertension', value: c, type: 'checkbox', checked: c}})} /> Hypertension</label>
+                            <label className="flex items-center gap-2 text-sm"><Checkbox name="pastMedicalHistory.diabetes" checked={formData.pastMedicalHistory?.diabetes || false} onCheckedChange={(c) => handleChange({target: {name: 'pastMedicalHistory.diabetes', value: c, type: 'checkbox', checked: c}})} /> Diabetes</label>
+                            <label className="flex items-center gap-2 text-sm"><Checkbox name="pastMedicalHistory.bronchialAsthma" checked={formData.pastMedicalHistory?.bronchialAsthma || false} onCheckedChange={(c) => handleChange({target: {name: 'pastMedicalHistory.bronchialAsthma', value: c, type: 'checkbox', checked: c}})} /> Bronchial Asthma</label>
+                            <Input name="pastMedicalHistory.lastAttack" value={formData.pastMedicalHistory?.lastAttack || ''} onChange={handleChange} placeholder="Last Attack" />
+                            <label className="flex items-center gap-2 text-sm"><Checkbox name="pastMedicalHistory.heartDisease" checked={formData.pastMedicalHistory?.heartDisease || false} onCheckedChange={(c) => handleChange({target: {name: 'pastMedicalHistory.heartDisease', value: c, type: 'checkbox', checked: c}})} /> Heart Disease</label>
+                            <label className="flex items-center gap-2 text-sm"><Checkbox name="pastMedicalHistory.thyroidDisease" checked={formData.pastMedicalHistory?.thyroidDisease || false} onCheckedChange={(c) => handleChange({target: {name: 'pastMedicalHistory.thyroidDisease', value: c, type: 'checkbox', checked: c}})} /> Thyroid Disease</label>
+                            <Input name="pastMedicalHistory.previousSurgery" value={formData.pastMedicalHistory?.previousSurgery || ''} onChange={handleChange} placeholder="Previous Surgery" />
+                            <Input name="pastMedicalHistory.allergies" value={formData.pastMedicalHistory?.allergies || ''} onChange={handleChange} placeholder="Allergies" />
+                        </div>
+                      </div>
+                      <div>
+                        <h4 className="font-medium mb-2">Family History</h4>
+                        <div className="space-y-2">
+                            <label className="flex items-center gap-2 text-sm"><Checkbox name="familyHistory.smoker" checked={formData.familyHistory?.smoker || false} onCheckedChange={(c) => handleChange({target: {name: 'familyHistory.smoker', value: c, type: 'checkbox', checked: c}})} /> Smoker</label>
+                            <label className="flex items-center gap-2 text-sm"><Checkbox name="familyHistory.alcohol" checked={formData.familyHistory?.alcohol || false} onCheckedChange={(c) => handleChange({target: {name: 'familyHistory.alcohol', value: c, type: 'checkbox', checked: c}})} /> Alcohol</label>
+                            <label className="flex items-center gap-2 text-sm"><Checkbox name="familyHistory.drugs" checked={formData.familyHistory?.drugs || false} onCheckedChange={(c) => handleChange({target: {name: 'familyHistory.drugs', value: c, type: 'checkbox', checked: c}})} /> Drugs</label>
+                        </div>
+                      </div>
                   </div>
+                </div>
 
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Address
-                    </label>
-                    <Input
-                      type="text"
-                      value={formData.address || ''}
-                      onChange={(e) => handleInputChange('address', e.target.value)}
-                      placeholder="Complete address"
-                    />
-                  </div>
-                </>
-              ) : (
-                <>
-                  {/* OB-GYNE Form Fields */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Patient Name *
-                      </label>
-                      <Input
-                        type="text"
-                        value={formData.patientName || ''}
-                        onChange={(e) => handleInputChange('patientName', e.target.value)}
-                        required
-                        placeholder="Enter patient's full name"
-                      />
+                {/* Obstetric History Table */}
+                <div className="p-4 border rounded-lg">
+                     <h3 className="text-lg font-semibold flex items-center gap-2 mb-2"><Baby className="h-5 w-5" /> Obstetric History</h3>
+                     <div className="grid grid-cols-5 gap-2 font-medium text-sm text-gray-600 px-2 mb-1">
+                        <span>Year</span><span>Place</span><span>Type of Delivery</span><span>BW</span><span>Complications</span>
+                     </div>
+                     {(formData.obstetricHistory || []).map((x, i) => (
+                        <div key={i} className="grid grid-cols-5 gap-2 mb-2">
+                            <Input name="year" value={x.year || ''} onChange={e => handleObstetricHistoryChange(i, e)} placeholder="Year" />
+                            <Input name="place" value={x.place || ''} onChange={e => handleObstetricHistoryChange(i, e)} placeholder="Place" />
+                            <Input name="typeOfDelivery" value={x.typeOfDelivery || ''} onChange={e => handleObstetricHistoryChange(i, e)} placeholder="AOG/Type" />
+                            <Input name="bw" value={x.bw || ''} onChange={e => handleObstetricHistoryChange(i, e)} placeholder="BW" />
+                            <Input name="complications" value={x.complications || ''} onChange={e => handleObstetricHistoryChange(i, e)} placeholder="Complications" />
+                        </div>
+                     ))}
+                     <Button type="button" variant="outline" size="sm" onClick={addObstetricHistoryRow} className="mt-2 flex items-center gap-1">
+                        <PlusCircle className="h-4 w-4" /> Add Row
+                     </Button>
+                </div>
+              
+                {/* Gynecologic History */}
+                <div className="p-4 border rounded-lg">
+                    <h3 className="text-lg font-semibold flex items-center gap-2 mb-4"><Heart className="h-5 w-5" /> Gynecologic History</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                        <Input name="gynecologicHistory.obScore" value={formData.gynecologicHistory?.obScore || ''} onChange={handleChange} placeholder="OB Score" />
+                        <Input name="gynecologicHistory.gravidity" value={formData.gynecologicHistory?.gravidity || ''} onChange={handleChange} placeholder="Gravidity" />
+                        <Input name="gynecologicHistory.parity" value={formData.gynecologicHistory?.parity || ''} onChange={handleChange} placeholder="Parity" />
+                        <Input name="gynecologicHistory.aog" value={formData.gynecologicHistory?.aog || ''} onChange={handleChange} placeholder="AOG" />
+                        
+                        <div className="md:col-span-2">
+                            <label className="text-xs text-gray-500">LMP</label>
+                            <Input name="gynecologicHistory.lmp" value={formData.gynecologicHistory?.lmp?.split('T')[0] || ''} onChange={handleChange} type="date" />
+                        </div>
+                        <div className="md:col-span-2">
+                            <label className="text-xs text-gray-500">PMP</label>
+                            <Input name="gynecologicHistory.pmp" value={formData.gynecologicHistory?.pmp?.split('T')[0] || ''} onChange={handleChange} type="date" />
+                        </div>
+
+                        <div className="md:col-span-2">
+                            <label className="text-xs text-gray-500">Early Ultrasound</label>
+                            <Input name="gynecologicHistory.earlyUltrasound" value={formData.gynecologicHistory?.earlyUltrasound?.split('T')[0] || ''} onChange={handleChange} type="date" />
+                        </div>
+                        <Input name="gynecologicHistory.aogByEutz" value={formData.gynecologicHistory?.aogByEutz || ''} onChange={handleChange} placeholder="AOG by EUTZ" />
+                        <div className="md:col-span-2">
+                            <label className="text-xs text-gray-500">EDD by LMP</label>
+                            <Input name="gynecologicHistory.eddByLmp" value={formData.gynecologicHistory?.eddByLmp?.split('T')[0] || ''} onChange={handleChange} type="date" />
+                        </div>
+                        <div className="md:col-span-2">
+                            <label className="text-xs text-gray-500">EDD by EUTZ</label>
+                            <Input name="gynecologicHistory.eddByEutz" value={formData.gynecologicHistory?.eddByEutz?.split('T')[0] || ''} onChange={handleChange} type="date" />
+                        </div>
+
+                        <Input name="gynecologicHistory.menarche" value={formData.gynecologicHistory?.menarche || ''} onChange={handleChange} placeholder="Menarche (Age)" type="number" />
+                        <Input name="gynecologicHistory.intervalDays" value={formData.gynecologicHistory?.intervalDays || ''} onChange={handleChange} placeholder="Interval (Days)" type="number" />
+                        <Input name="gynecologicHistory.durationDays" value={formData.gynecologicHistory?.durationDays || ''} onChange={handleChange} placeholder="Duration (Days)" type="number" />
+                        <Input name="gynecologicHistory.amountPads" value={formData.gynecologicHistory?.amountPads || ''} onChange={handleChange} placeholder="Amount (Pads/Day)" />
+
+                        <label className="flex items-center gap-2 text-sm md:col-span-2"><Checkbox name="gynecologicHistory.dysmenorrhea" checked={formData.gynecologicHistory?.dysmenorrhea || false} onCheckedChange={(c) => handleChange({target: {name: 'gynecologicHistory.dysmenorrhea', value: c, type: 'checkbox', checked: c}})} /> Dysmenorrhea</label>
+                        
+                        <Input name="gynecologicHistory.coitarche" value={formData.gynecologicHistory?.coitarche || ''} onChange={handleChange} placeholder="Coitarche (Age)" type="number" />
+                        <Input name="gynecologicHistory.sexualPartners" value={formData.gynecologicHistory?.sexualPartners || ''} onChange={handleChange} placeholder="# of Sexual Partners" type="number" />
+                        <Input name="gynecologicHistory.contraceptiveUse" value={formData.gynecologicHistory?.contraceptiveUse || ''} onChange={handleChange} placeholder="Contraceptive Use" />
+
+                        <div className="md:col-span-2">
+                             <label className="text-xs text-gray-500">Last Pap Smear</label>
+                            <Input name="gynecologicHistory.lastPapSmear.date" value={formData.gynecologicHistory?.lastPapSmear?.date?.split('T')[0] || ''} onChange={handleChange} type="date" />
+                        </div>
+                        <Input name="gynecologicHistory.lastPapSmear.result" value={formData.gynecologicHistory?.lastPapSmear?.result || ''} onChange={handleChange} placeholder="Pap Smear Result" className="md:col-span-2" />
                     </div>
+                </div>
 
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Birth Date
-                      </label>
-                      <Input
-                        type="date"
-                        value={formData.birthDate || ''}
-                        onChange={(e) => handleInputChange('birthDate', e.target.value)}
-                      />
+                {/* Diagnostics and Immunizations */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    {/* Baseline Diagnostics */}
+                    <div className="p-4 border rounded-lg">
+                        <h3 className="text-lg font-semibold flex items-center gap-2 mb-4"><Beaker className="h-5 w-5" /> Baseline Diagnostics</h3>
+                        <div className="grid grid-cols-2 gap-4">
+                            <Input name="baselineDiagnostics.cbc.hgb" value={formData.baselineDiagnostics?.cbc?.hgb || ''} onChange={handleChange} placeholder="Hgb" />
+                            <Input name="baselineDiagnostics.cbc.hct" value={formData.baselineDiagnostics?.cbc?.hct || ''} onChange={handleChange} placeholder="Hct" />
+                            <Input name="baselineDiagnostics.cbc.plt" value={formData.baselineDiagnostics?.cbc?.plt || ''} onChange={handleChange} placeholder="Plt" />
+                            <Input name="baselineDiagnostics.cbc.wbc" value={formData.baselineDiagnostics?.cbc?.wbc || ''} onChange={handleChange} placeholder="WBC" />
+                            <Input name="baselineDiagnostics.bloodType" value={formData.baselineDiagnostics?.bloodType || ''} onChange={handleChange} placeholder="Blood Type" />
+                            <Input name="baselineDiagnostics.fbs" value={formData.baselineDiagnostics?.fbs || ''} onChange={handleChange} placeholder="FBS" />
+                            <Input name="baselineDiagnostics.hbsag" value={formData.baselineDiagnostics?.hbsag || ''} onChange={handleChange} placeholder="HBsAg" />
+                            <Input name="baselineDiagnostics.vdrlRpr" value={formData.baselineDiagnostics?.vdrlRpr || ''} onChange={handleChange} placeholder="VDRL/RPR" />
+                            <Input name="baselineDiagnostics.hiv" value={formData.baselineDiagnostics?.hiv || ''} onChange={handleChange} placeholder="HIV" />
+                        </div>
                     </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Contact Number
-                      </label>
-                      <Input
-                        type="tel"
-                        value={formData.contactNumber || ''}
-                        onChange={(e) => handleInputChange('contactNumber', e.target.value)}
-                        placeholder="Contact number"
-                      />
+                    {/* Immunizations */}
+                    <div className="p-4 border rounded-lg">
+                        <h3 className="text-lg font-semibold flex items-center gap-2 mb-4"><ShieldCheck className="h-5 w-5" /> Immunizations</h3>
+                        <div className="space-y-3">
+                            <div><label className="text-xs text-gray-500">TT1</label><Input name="immunizations.tt1" value={formData.immunizations?.tt1?.split('T')[0] || ''} onChange={handleChange} type="date" /></div>
+                            <div><label className="text-xs text-gray-500">TT2</label><Input name="immunizations.tt2" value={formData.immunizations?.tt2?.split('T')[0] || ''} onChange={handleChange} type="date" /></div>
+                            <div><label className="text-xs text-gray-500">TT3</label><Input name="immunizations.tt3" value={formData.immunizations?.tt3?.split('T')[0] || ''} onChange={handleChange} type="date" /></div>
+                            <div><label className="text-xs text-gray-500">TDAP</label><Input name="immunizations.tdap" value={formData.immunizations?.tdap?.split('T')[0] || ''} onChange={handleChange} type="date" /></div>
+                            <div><label className="text-xs text-gray-500">Flu</label><Input name="immunizations.flu" value={formData.immunizations?.flu?.split('T')[0] || ''} onChange={handleChange} type="date" /></div>
+                            <div><label className="text-xs text-gray-500">HPV</label><Input name="immunizations.hpv" value={formData.immunizations?.hpv?.split('T')[0] || ''} onChange={handleChange} type="date" /></div>
+                            <div><label className="text-xs text-gray-500">PCV</label><Input name="immunizations.pcv" value={formData.immunizations?.pcv?.split('T')[0] || ''} onChange={handleChange} type="date" /></div>
+                        </div>
                     </div>
+                </div>
 
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Civil Status
-                      </label>
-                      <select
-                        value={formData.civilStatus || ''}
-                        onChange={(e) => handleInputChange('civilStatus', e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      >
-                        <option value="">Select Status</option>
-                        <option value="Single">Single</option>
-                        <option value="Married">Married</option>
-                        <option value="Divorced">Divorced</option>
-                        <option value="Widowed">Widowed</option>
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Occupation
-                      </label>
-                      <Input
-                        type="text"
-                        value={formData.occupation || ''}
-                        onChange={(e) => handleInputChange('occupation', e.target.value)}
-                        placeholder="Patient's occupation"
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Address
-                    </label>
-                    <Input
-                      type="text"
-                      value={formData.address || ''}
-                      onChange={(e) => handleInputChange('address', e.target.value)}
-                      placeholder="Complete address"
-                    />
-                  </div>
-                </>
-              )}
-
-              {/* Form Actions */}
-              <div className="flex items-center justify-end space-x-3 pt-4 border-t">
+              <div className="flex justify-end space-x-2 sticky bottom-0 bg-white py-4 px-6 border-t">
                 <Button type="button" variant="outline" onClick={onClose}>
                   Cancel
                 </Button>
-                <Button 
-                  type="submit" 
-                  disabled={loading}
-                  className="flex items-center space-x-2"
-                >
-                  {loading ? (
-                    <LoadingSpinner size="sm" />
-                  ) : (
-                    <Save className="h-4 w-4" />
-                  )}
-                  <span>{loading ? 'Saving...' : 'Save Changes'}</span>
+                <Button type="submit" disabled={loading}>
+                  {loading ? <LoadingSpinner /> : 'Save Changes'}
                 </Button>
               </div>
             </form>

@@ -14,7 +14,9 @@ import {
   ArrowLeft,
   Stethoscope,
   Baby,
-  CheckCircle
+  CheckCircle,
+  MapPin,
+  Phone
 } from 'lucide-react';
 import { toast } from '../components/ui/toaster';
 
@@ -383,6 +385,22 @@ export default function PatientBookAppointment() {
                   rows={3}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-clinic-500 focus:border-transparent"
                 />
+              </div>
+              <div className="mt-4 p-4 bg-gray-50 rounded-lg">
+                <div className="flex items-start gap-3">
+                  <MapPin className="h-5 w-5 text-clinic-600 mt-0.5" />
+                  <div>
+                    <h4 className="font-medium text-gray-900">Clinic Location</h4>
+                    <p className="text-sm text-gray-600 mt-1">San Nicolas Arayat Pampanga</p>
+                    <p className="text-sm text-gray-500 mt-1">(Beside "Buff. It Up Auto Spa and Detailing" and In front of INC-San Nicolas)</p>
+                    <div className="flex items-center gap-2 mt-2">
+                      <Phone className="h-4 w-4 text-clinic-600" />
+                      <a href="tel:09626952050" className="text-sm text-clinic-600 hover:underline">
+                        0962 695 2050
+                      </a>
+                    </div>
+                  </div>
+                </div>
               </div>
             </CardContent>
           </Card>
