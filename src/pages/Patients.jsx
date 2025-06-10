@@ -5,7 +5,8 @@ import { Input } from '../components/ui/input';
 import { LoadingSpinner } from '../components/ui/loading-spinner';
 import { Users, Plus, Search, Filter, Baby, Heart, Calendar, Phone, MapPin, Edit, Eye } from 'lucide-react';
 import { patientsAPI } from '../lib/api';
-import PatientRegistrationModal from '../components/forms/PatientRegistrationModal';
+import ObGyneRegistrationModal from '../components/forms/ObGyneRegistrationModal';
+import PediatricRegistrationModal from '../components/forms/PediatricRegistrationModal';
 import { toast } from '../components/ui/toast';
 import { useNavigate } from 'react-router-dom';
 
@@ -24,8 +25,8 @@ export default function Patients() {
   const [error, setError] = useState('');
   
   // Modal states
-  const [modalOpen, setModalOpen] = useState(false);
-  const [modalType, setModalType] = useState('');
+  const [isObGyneModalOpen, setIsObGyneModalOpen] = useState(false);
+  const [isPediatricModalOpen, setIsPediatricModalOpen] = useState(false);
   
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
@@ -58,6 +59,7 @@ export default function Patients() {
       const params = {
         page: currentPage,
         limit: 10,
+        status: ['Active', 'New'],
         ...(selectedType && { type: selectedType })
       };
 
@@ -154,11 +156,6 @@ export default function Patients() {
     toast.success(`Patient registered successfully! Patient ID: ${newPatient.patient.patientNumber}`);
   };
 
-  const openRegistrationModal = (type) => {
-    setModalType(type);
-    setModalOpen(true);
-  };
-
   const formatDate = (dateString) => {
     if (!dateString) return 'N/A';
     return new Date(dateString).toLocaleDateString();
@@ -228,7 +225,7 @@ export default function Patients() {
           <Button 
             variant="outline" 
             className="flex items-center gap-2"
-            onClick={() => openRegistrationModal('pediatric')}
+            onClick={() => setIsPediatricModalOpen(true)}
           >
             <Baby className="h-4 w-4" />
             New Pediatric
@@ -236,7 +233,7 @@ export default function Patients() {
           <Button 
             variant="clinic" 
             className="flex items-center gap-2"
-            onClick={() => openRegistrationModal('ob-gyne')}
+            onClick={() => setIsObGyneModalOpen(true)}
           >
             <Heart className="h-4 w-4" />
             New OB-GYNE
@@ -372,14 +369,14 @@ export default function Patients() {
                 <div className="flex gap-2 justify-center">
                   <Button 
                     variant="outline"
-                    onClick={() => openRegistrationModal('pediatric')}
+                    onClick={() => setIsPediatricModalOpen(true)}
                   >
                     <Baby className="h-4 w-4 mr-2" />
                     Register Pediatric Patient
                   </Button>
                   <Button 
                     variant="clinic"
-                    onClick={() => openRegistrationModal('ob-gyne')}
+                    onClick={() => setIsObGyneModalOpen(true)}
                   >
                     <Heart className="h-4 w-4 mr-2" />
                     Register OB-GYNE Patient
@@ -495,11 +492,15 @@ export default function Patients() {
         </CardContent>
       </Card>
 
-      {/* Patient Registration Modal */}
-      <PatientRegistrationModal
-        isOpen={modalOpen}
-        onClose={() => setModalOpen(false)}
-        patientType={modalType}
+      {/* Modals */}
+      <ObGyneRegistrationModal 
+        isOpen={isObGyneModalOpen} 
+        onClose={() => setIsObGyneModalOpen(false)}
+        onSuccess={handleRegistrationSuccess}
+      />
+      <PediatricRegistrationModal 
+        isOpen={isPediatricModalOpen}
+        onClose={() => setIsPediatricModalOpen(false)}
         onSuccess={handleRegistrationSuccess}
       />
     </div>

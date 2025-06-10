@@ -326,7 +326,7 @@ export default function PatientRegister() {
                   <Checkbox
                     id="consent"
                     checked={formData.consent}
-                    onCheckedChange={(checked) => setFormData({ ...formData, consent: checked })}
+                    onCheckedChange={(checked) => setFormData({ ...formData, consent: Boolean(checked) })}
                   />
                   <div className="grid gap-1.5 leading-none">
                     <label

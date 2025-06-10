@@ -8,7 +8,7 @@ import { patientsAPI } from '../../lib/api';
 import { toast } from '../ui/toast';
 import { Checkbox } from '../ui/checkbox';
 
-const EditPatientModal = ({ patient, onClose, onSuccess }) => {
+const EditObGynePatientModal = ({ patient, onClose, onSuccess }) => {
   const [formData, setFormData] = useState({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -307,12 +307,12 @@ const EditPatientModal = ({ patient, onClose, onSuccess }) => {
                     </div>
                 </div>
 
-              <div className="flex justify-end space-x-2 sticky bottom-0 bg-white py-4 px-6 border-t">
-                <Button type="button" variant="outline" onClick={onClose}>
+              <div className="flex justify-end gap-3 pt-6 mt-6 border-t">
+                <Button type="button" variant="outline" onClick={onClose} disabled={loading}>
                   Cancel
                 </Button>
-                <Button type="submit" disabled={loading}>
-                  {loading ? <LoadingSpinner /> : 'Save Changes'}
+                <Button type="submit" variant="clinic" disabled={loading}>
+                  {loading ? <LoadingSpinner size="sm" className="mr-2" /> : 'Save Changes'}
                 </Button>
               </div>
             </form>
@@ -323,4 +323,4 @@ const EditPatientModal = ({ patient, onClose, onSuccess }) => {
   );
 };
 
-export default EditPatientModal; 
+export default EditObGynePatientModal; 
