@@ -1,6 +1,17 @@
 import axios from 'axios';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
+// API Base URL configuration
+const API_BASE_URL = import.meta.env.VITE_API_URL || 
+  (import.meta.env.MODE === 'development' 
+    ? 'http://localhost:8000/api' 
+    : 'https://express-clinic-sched2.onrender.com/api');
+
+// Debug logging
+console.log('API Configuration:', {
+  MODE: import.meta.env.MODE,
+  VITE_API_URL: import.meta.env.VITE_API_URL,
+  API_BASE_URL: API_BASE_URL
+});
 
 // Create axios instance for staff API
 const api = axios.create({
