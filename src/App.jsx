@@ -1,4 +1,5 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import './debug-api.js'; // Debug API configuration
 
 // Shared components and utilities
 import { 

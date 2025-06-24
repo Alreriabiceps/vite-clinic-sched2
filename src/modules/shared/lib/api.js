@@ -6,16 +6,21 @@ const API_BASE_URL = import.meta.env.VITE_API_URL ||
     ? 'http://localhost:8000/api' 
     : 'https://express-clinic-sched2.onrender.com/api');
 
+// Ensure the URL always ends with /api
+const normalizedURL = API_BASE_URL.endsWith('/api') ? API_BASE_URL : `${API_BASE_URL}/api`;
+const FINAL_API_URL = normalizedURL;
+
 // Debug logging
 console.log('API Configuration:', {
   MODE: import.meta.env.MODE,
   VITE_API_URL: import.meta.env.VITE_API_URL,
-  API_BASE_URL: API_BASE_URL
+  API_BASE_URL: API_BASE_URL,
+  FINAL_API_URL: FINAL_API_URL
 });
 
 // Create axios instance for staff API
 const api = axios.create({
-  baseURL: API_BASE_URL,
+  baseURL: FINAL_API_URL,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -50,7 +55,7 @@ api.interceptors.response.use(
 
 // Create separate axios instance for patient API
 const patientApi = axios.create({
-  baseURL: API_BASE_URL,
+  baseURL: FINAL_API_URL,
   headers: {
     'Content-Type': 'application/json',
   },
