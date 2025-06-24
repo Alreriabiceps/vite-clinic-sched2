@@ -121,9 +121,10 @@
     @apply bg-warm-pink text-white;
   }
 
-  /* Calendar custom styles - Google Calendar Inspired */
+  /* Enhanced Google Calendar Styling */
 .rbc-calendar {
   @apply font-sans text-gray-800;
+  font-family: 'Google Sans', 'Segoe UI', Roboto, Arial, sans-serif;
 }
 
 /* Hide the original toolbar when using our custom one */
@@ -140,37 +141,53 @@
 }
 
 .rbc-toolbar button.rbc-active {
-  @apply bg-clinic-600 text-white border-clinic-600;
+  @apply bg-warm-pink text-white border-warm-pink;
 }
 
+/* Header styling */
 .rbc-header {
-  @apply py-2 font-medium text-sm border-b border-gray-200;
+  @apply py-3 px-2 font-semibold text-sm text-gray-700 border-b border-gray-200 bg-gray-50;
   font-family: 'Google Sans', Roboto, Arial, sans-serif;
+}
+
+.rbc-header + .rbc-header {
+  @apply border-l border-gray-200;
 }
 
 /* Month view styling */
 .rbc-month-view {
-  @apply border-0 shadow-none;
+  @apply border border-gray-200 rounded-lg overflow-hidden;
+  background: white;
 }
 
 .rbc-month-row {
-  @apply border-r-0 border-l-0 border-gray-200;
+  @apply border-0;
+  min-height: 100px;
 }
 
 .rbc-month-row + .rbc-month-row {
-  @apply border-t;
+  @apply border-t border-gray-100;
 }
 
 .rbc-date-cell {
-  @apply p-1 text-right;
+  @apply p-2 text-right;
 }
 
-.rbc-date-cell.rbc-now {
-  @apply font-semibold;
+.rbc-date-cell > a {
+  @apply text-gray-700 hover:text-gray-900 font-medium;
+  text-decoration: none;
+}
+
+.rbc-date-cell.rbc-now > a {
+  @apply bg-blue-600 text-white rounded-full w-8 h-8 flex items-center justify-center font-bold;
 }
 
 .rbc-day-bg {
-  @apply border-r-0 border-l-0;
+  @apply border-r border-gray-100;
+}
+
+.rbc-day-bg:last-child {
+  @apply border-r-0;
 }
 
 /* Today's cell style */
@@ -179,29 +196,46 @@
 }
 
 .google-weekend {
-  background-color: #f9f9f9 !important;
+  background-color: #fafafa !important;
 }
 
+/* Event styling */
 .rbc-event {
-  @apply bg-clinic-600 border-0 rounded-sm shadow-sm overflow-hidden;
-  padding: 2px 3px;
+  @apply border-0 rounded-md shadow-sm overflow-hidden;
+  padding: 0;
+  margin: 1px;
+  background: transparent !important;
+}
+
+.rbc-event:focus {
+  outline: 2px solid #d6457a;
+  outline-offset: 1px;
+}
+
+.rbc-event-content {
+  padding: 0;
 }
 
 .rbc-today {
-  @apply bg-blue-50;
+  background-color: #e8f0fe;
 }
 
 .rbc-off-range-bg {
   @apply bg-gray-50;
 }
 
-/* Week view styling */
+.rbc-off-range {
+  color: #9aa0a6;
+}
+
+/* Week and Day view styling */
 .rbc-time-view {
-  @apply border-0 shadow-none;
+  @apply border border-gray-200 rounded-lg overflow-hidden;
+  background: white;
 }
 
 .rbc-time-header {
-  @apply border-b border-gray-200;
+  @apply border-b border-gray-200 bg-gray-50;
 }
 
 .rbc-time-header-content {
@@ -209,25 +243,36 @@
 }
 
 .rbc-time-content {
-  @apply border-t border-gray-200;
+  @apply border-l border-gray-200;
 }
 
 .rbc-day-slot .rbc-time-slot {
-  @apply border-t border-gray-100;
+  @apply border-b border-gray-50;
+  min-height: 40px;
 }
 
 .rbc-timeslot-group {
-  @apply border-b border-gray-200;
+  @apply border-b border-gray-100;
 }
 
 .rbc-current-time-indicator {
   @apply bg-red-500;
   height: 2px;
+  z-index: 3;
+  box-shadow: 0 0 6px rgba(239, 68, 68, 0.5);
 }
 
-/* Day view styling */
 .rbc-day-slot .rbc-event {
-  @apply border-0 rounded-sm shadow-sm;
+  @apply rounded-md shadow-sm;
+  margin: 1px 2px;
+}
+
+.rbc-time-slot {
+  @apply text-xs text-gray-500;
+}
+
+.rbc-label {
+  @apply text-xs font-medium text-gray-600 px-2;
 }
 
 /* Agenda view styling */
@@ -328,7 +373,6 @@
   left: 0;
   right: 0;
 }
-}
 
 /* Loading animation */
 @keyframes pulse-dot {
@@ -370,4 +414,5 @@
 
 ::-webkit-scrollbar-thumb:hover {
   background: hsl(var(--muted-foreground) / 0.5);
+}
 }
