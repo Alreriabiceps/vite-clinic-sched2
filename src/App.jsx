@@ -1,33 +1,39 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { useAuth } from './hooks/useAuth';
-import { Toaster } from './components/ui/toaster';
-import { ToastContainer } from './components/ui/toast';
-import LoginPage from './pages/LoginPage';
-import DashboardLayout from './components/layout/DashboardLayout';
-import Dashboard from './pages/Dashboard';
-import Appointments from './pages/Appointments';
-import Patients from './pages/Patients';
-import PatientDetail from './pages/PatientDetail';
-import Reports from './pages/Reports';
-import Settings from './pages/Settings';
-import { LoadingSpinner } from './components/ui/loading-spinner';
 
-// Patient Portal Components
-import PatientPortal from './pages/PatientPortal';
-import PatientLogin from './pages/PatientLogin';
-import PatientRegister from './pages/PatientRegister';
-import PatientDashboard from './pages/PatientDashboard';
-import PatientBookAppointment from './pages/PatientBookAppointment';
-import PatientAppointments from './pages/PatientAppointments';
-import PatientProfile from './pages/PatientProfile';
-import PrivacyPolicy from './pages/PrivacyPolicy';
-import TermsOfService from './pages/TermsOfService';
+// Shared components and utilities
+import { 
+  useAuth, 
+  Toaster, 
+  ToastContainer, 
+  DashboardLayout, 
+  LoadingSpinner,
+  PrivacyPolicy,
+  TermsOfService
+} from './modules/shared';
+
+// Module imports
+import { 
+  LoginPage,
+  PatientPortal,
+  PatientLogin,
+  PatientRegister,
+  PatientDashboard,
+  PatientBookAppointment,
+  PatientAppointments,
+  PatientProfile
+} from './modules/auth';
+
+import { Dashboard } from './modules/dashboard';
+import { Appointments } from './modules/appointments';
+import { Patients, PatientDetail } from './modules/patients';
+import { Reports } from './modules/reports';
+import { Settings } from './modules/settings';
 
 function App() {
   const { user, loading } = useAuth();
 
   if (loading) {
-  return (
+    return (
       <div className="min-h-screen flex items-center justify-center clinic-gradient">
         <div className="text-center">
           <LoadingSpinner size="lg" />
@@ -38,7 +44,12 @@ function App() {
   }
 
   return (
-    <Router>
+    <Router 
+      future={{
+        v7_startTransition: true,
+        v7_relativeSplatPath: true
+      }}
+    >
       <div className="App">
         <Routes>
           {/* Staff Login Route */}
