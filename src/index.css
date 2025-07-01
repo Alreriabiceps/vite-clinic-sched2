@@ -77,8 +77,8 @@
     @apply bg-soft-olive hover:bg-soft-olive-300 text-charcoal border-soft-olive;
   }
   
-  .accent-text {
-    @apply text-muted-gold;
+  .accent-text, .text-muted-gold, .text-muted-gold-700, .text-gold, .text-yellow-700, .text-yellow-800, .text-yellow-600, .text-yellow-500, .text-yellow-400, .text-yellow-300, .text-yellow-200, .text-yellow-100, .text-yellow-50 {
+    color: #000 !important;
   }
   
   .main-text {
@@ -414,5 +414,9 @@
 
 ::-webkit-scrollbar-thumb:hover {
   background: hsl(var(--muted-foreground) / 0.5);
+}
+
+.border-muted-gold, .border-yellow-700, .border-yellow-800, .border-yellow-600, .border-yellow-500, .border-yellow-400, .border-yellow-300, .border-yellow-200, .border-yellow-100, .border-yellow-50 {
+  border-color: #000 !important;
 }
 }

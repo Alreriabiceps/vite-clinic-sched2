@@ -54,11 +54,65 @@ export default function Appointments() {
   const { user } = useAuth();
   const [appointments, setAppointments] = useState([]);
   const [loading, setLoading] = useState(true);
+  
+  // Add custom styles for calendar to handle multiple events better
+  useEffect(() => {
+    const style = document.createElement('style');
+    style.textContent = `
+      /* Increase calendar cell height to accommodate more events */
+      .rbc-month-view .rbc-row {
+        min-height: 100px !important;
+      }
+      
+      /* Improve popup appearance */
+      .rbc-overlay {
+        background: white !important;
+        border: 1px solid #e5e7eb !important;
+        border-radius: 8px !important;
+        box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15) !important;
+        max-height: 400px !important;
+        overflow-y: auto !important;
+        z-index: 1000 !important;
+      }
+      
+      .rbc-overlay-header {
+        background: #f9fafb !important;
+        border-bottom: 1px solid #e5e7eb !important;
+        padding: 12px 16px !important;
+        font-weight: 600 !important;
+        color: #374151 !important;
+      }
+      
+      /* Style for show more link */
+      .rbc-show-more {
+        background: #f3f4f6 !important;
+        border: 1px solid #d1d5db !important;
+        border-radius: 4px !important;
+        color: #6b7280 !important;
+        font-size: 11px !important;
+        font-weight: 500 !important;
+        padding: 2px 6px !important;
+        margin: 1px !important;
+        cursor: pointer !important;
+        transition: all 0.2s !important;
+      }
+      
+      .rbc-show-more:hover {
+        background: #e5e7eb !important;
+        color: #374151 !important;
+      }
+    `;
+    document.head.appendChild(style);
+    
+    return () => {
+      document.head.removeChild(style);
+    };
+  }, []);
   // const [filter, setFilter] = useState('all'); // Removed - using statusTab and dateRange instead
   const [searchTerm, setSearchTerm] = useState('');
   const [viewMode, setViewMode] = useState('list'); // 'list' or 'calendar'
-  const [statusTab, setStatusTab] = useState('all'); // 'active', 'completed', 'all'
-  const [dateRange, setDateRange] = useState('all'); // 'today', 'week', 'month', 'all'
+  const [statusFilter, setStatusFilter] = useState('all'); // 'active', 'completed', 'all' (removed 'today')
+  const [dateRange, setDateRange] = useState('all'); // 'week', 'month', 'all' (removed redundant 'today')
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage] = useState(10); // Fixed items per page
   const [currentView, setCurrentView] = useState('month');
@@ -89,6 +143,11 @@ export default function Appointments() {
   const [showCompleteModal, setShowCompleteModal] = useState(false);
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [actionAppointment, setActionAppointment] = useState(null);
+  
+  // Modal for showing appointments on a specific date
+  const [showDateModal, setShowDateModal] = useState(false);
+  const [selectedDateAppointments, setSelectedDateAppointments] = useState([]);
+  const [selectedModalDate, setSelectedModalDate] = useState(null);
 
   const timeSlots = [
     '09:00 AM', '09:30 AM', '10:00 AM', '10:30 AM', '11:00 AM', '11:30 AM',
@@ -180,18 +239,16 @@ export default function Appointments() {
     return appointment.contactInfo?.primaryPhone || 'No contact';
   };
 
-  const getStatusColor = (status) => {
+  const getStatusBadgeClass = (status) => {
     switch (status.toLowerCase()) {
-      case 'scheduled':
-        return 'bg-blue-100 text-blue-800 border-blue-200';
-      case 'confirmed':
-        return 'bg-green-100 text-green-800 border-green-200';
       case 'completed':
-        return 'bg-gray-100 text-gray-800 border-gray-200';
+        return 'bg-green-100 text-green-700';
+      case 'rescheduled':
+        return 'bg-yellow-100 text-yellow-800';
       case 'cancelled':
-        return 'bg-red-100 text-red-800 border-red-200';
+        return 'bg-red-100 text-red-700';
       default:
-        return 'bg-yellow-100 text-yellow-800 border-yellow-200';
+        return 'bg-gray-100 text-gray-700';
     }
   };
 
@@ -205,6 +262,8 @@ export default function Appointments() {
         return <CheckCircle className="h-4 w-4" />;
       case 'cancelled':
         return <XCircle className="h-4 w-4" />;
+      case 'rescheduled':
+        return <Clock className="h-4 w-4" />;
       default:
         return <AlertTriangle className="h-4 w-4" />;
     }
@@ -238,23 +297,17 @@ export default function Appointments() {
     const searchMatch = !searchTerm || getPatientName(appointment).toLowerCase().includes(searchTerm.toLowerCase());
     const doctorMatch = doctorFilter.includes(appointment.doctorName);
     
-    // Status tab filtering
-    const matchesStatusTab = (() => {
-      if (statusTab === 'active') {
-        return ['scheduled', 'confirmed', 'in-progress'].includes(appointment.status);
-      } else if (statusTab === 'completed') {
-        return ['completed', 'cancelled', 'no-show'].includes(appointment.status);
-      }
-      return true; // 'all' tab
+    // Status filtering (exact match for segmented control)
+    const matchesStatus = (() => {
+      if (statusFilter === 'all') return true;
+      return appointment.status && appointment.status.toLowerCase() === statusFilter;
     })();
     
-    // Date range filtering
+    // Date range filtering (removed redundant 'today')
     const appointmentDate = new Date(appointment.appointmentDate);
     const today = new Date();
     const matchesDateRange = (() => {
-      if (dateRange === 'today') {
-        return appointmentDate.toDateString() === today.toDateString();
-      } else if (dateRange === 'week') {
+      if (dateRange === 'week') {
         const weekStart = new Date(today);
         weekStart.setDate(today.getDate() - today.getDay());
         const weekEnd = new Date(weekStart);
@@ -267,14 +320,14 @@ export default function Appointments() {
       return true; // 'all' date range
     })();
     
-    return searchMatch && doctorMatch && matchesStatusTab && matchesDateRange;
+    return searchMatch && doctorMatch && matchesStatus && matchesDateRange;
   });
 
   // Debug logging
   console.log('Filtering results:', {
     totalAppointments: appointments.length,
     visibleAppointments: visibleAppointments.length,
-    statusTab,
+    statusFilter,
     dateRange,
     doctorFilter
   });
@@ -298,7 +351,7 @@ export default function Appointments() {
   // Reset to first page when filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [statusTab, dateRange, searchTerm]);
+  }, [statusFilter, dateRange, searchTerm]);
 
   const updateAppointmentStatus = async (appointmentId, newStatus) => {
     try {
@@ -367,154 +420,41 @@ export default function Appointments() {
     }
   };
   
-  // Convert appointments to calendar events
+  // Calendar events creation
   const getCalendarEvents = () => {
-    const events = visibleAppointments.map(appointment => {
-      // Parse appointment date and time to create start and end Date objects
+    // Use ALL appointments for calendar display
+    const events = appointments.map(appointment => {
+      // Parse date
       const dateStr = appointment.appointmentDate.split('T')[0];
-      const timeStr = appointment.appointmentTime;
+      const [year, month, day] = dateStr.split('-');
       
-      // Convert 12-hour format to 24-hour for date parsing
+      // Parse time  
+      const timeStr = appointment.appointmentTime;
       const [time, period] = timeStr.split(' ');
       const [hours, minutes] = time.split(':');
       let hour24 = parseInt(hours);
       
-      if (period === 'PM' && hour24 < 12) {
-        hour24 += 12;
-      } else if (period === 'AM' && hour24 === 12) {
-        hour24 = 0;
-      }
+      if (period === 'PM' && hour24 < 12) hour24 += 12;
+      if (period === 'AM' && hour24 === 12) hour24 = 0;
       
-      const startDate = new Date(`${dateStr}T${hour24.toString().padStart(2, '0')}:${minutes}:00`);
-      const endDate = new Date(startDate);
-      endDate.setMinutes(startDate.getMinutes() + 30); // Assuming 30-minute appointments
-      
-      // Enhanced color scheme based on clinic palette
-      let backgroundColor, borderColor, textColor;
-      
-      // Status-based colors first
-      if (appointment.status === 'cancelled') {
-        backgroundColor = '#fecaca'; // red-200
-        borderColor = '#ef4444'; // red-500
-        textColor = '#991b1b'; // red-800
-      } else if (appointment.status === 'completed') {
-        backgroundColor = '#d1fae5'; // green-200
-        borderColor = '#10b981'; // green-500
-        textColor = '#064e3b'; // green-900
-      } else {
-        // Doctor-based colors for active appointments
-        if (appointment.doctorName.includes('Maria')) {
-          backgroundColor = '#fce7f3'; // pink-100 (OB-GYNE)
-          borderColor = '#d6457a'; // warm-pink
-          textColor = '#881337'; // pink-900
-        } else {
-          backgroundColor = '#dce3d5'; // soft-olive-200 (Pediatric)
-          borderColor = '#84cc16'; // lime-500
-          textColor = '#365314'; // lime-900
-        }
-        
-        // Status variations for active appointments
-        if (appointment.status === 'confirmed') {
-          backgroundColor = appointment.doctorName.includes('Maria') ? '#fbcfe8' : '#bef264'; // More saturated
-          borderColor = appointment.doctorName.includes('Maria') ? '#d6457a' : '#65a30d';
-        }
-      }
+      // Create event dates
+      const startDate = new Date(parseInt(year), parseInt(month) - 1, parseInt(day), hour24, parseInt(minutes));
+      const endDate = new Date(startDate.getTime() + 30 * 60 * 1000); // 30 minutes later
       
       return {
         id: appointment._id,
-        title: getPatientName(appointment),
+        title: getPatientName(appointment) + ' - ' + appointment.appointmentTime,
         start: startDate,
-        end: endDate,
-        backgroundColor,
-        borderColor,
-        textColor,
-        appointment: appointment,
-        resource: {
-          doctorType: appointment.doctorName.includes('Maria') ? 'ob-gyne' : 'pediatric',
-          status: appointment.status,
-          serviceType: appointment.serviceType,
-          patientName: getPatientName(appointment),
-          time: appointment.appointmentTime
-        }
+        end: endDate
       };
     });
     
-    // Enhanced holiday events
-    const holidayEvents = holidays.map(holiday => ({
-      ...holiday,
-      backgroundColor: '#fef2f2', // red-50
-      borderColor: '#ef4444', // red-500
-      textColor: '#7f1d1d', // red-900
-      isHoliday: true
-    }));
-    
-    // Combine appointments with holidays
-    return [...events, ...holidayEvents];
+    return events;
   };
 
-  // Enhanced Google Calendar-like event component
-  const EventComponent = ({ event }) => {
-    if (event.isHoliday) {
-      return (
-        <div 
-          className="px-2 py-1 text-xs rounded-md border-l-4 overflow-hidden shadow-sm"
-          style={{ 
-            backgroundColor: event.backgroundColor,
-            borderLeftColor: event.borderColor,
-            color: event.textColor
-          }}
-        >
-          <div className="font-semibold truncate">{event.title}</div>
-          <div className="text-xs opacity-75">🎉 Holiday</div>
-        </div>
-      );
-    }
-    
-    const { appointment, resource } = event;
-    const statusIcon = appointment?.status === 'confirmed' ? '✓' : 
-                      appointment?.status === 'completed' ? '✅' : 
-                      appointment?.status === 'cancelled' ? '❌' : '📅';
-    
-    return (
-      <div 
-        className="px-2 py-1 text-xs rounded-md border-l-4 overflow-hidden shadow-sm hover:shadow-md transition-shadow cursor-pointer"
-        style={{ 
-          backgroundColor: event.backgroundColor,
-          borderLeftColor: event.borderColor,
-          color: event.textColor
-        }}
-      >
-        <div className="flex items-center justify-between mb-1">
-          <div className="font-semibold truncate flex-1">{resource?.patientName}</div>
-          <div className="text-xs ml-1">{statusIcon}</div>
-        </div>
-        
-        <div className="flex items-center gap-1 mb-1">
-          <Clock className="h-3 w-3 flex-shrink-0" />
-          <span className="text-xs font-medium">{resource?.time}</span>
-        </div>
-        
-        <div className="text-xs opacity-90 truncate">
-          {resource?.serviceType?.replace(/_/g, ' ') || 'Consultation'}
-        </div>
-        
-        {appointment?.status && appointment.status !== 'scheduled' && (
-          <div className="text-xs capitalize mt-1 font-semibold opacity-75">
-            {appointment.status}
-          </div>
-        )}
-      </div>
-    );
-  };
-  
-  // Handle calendar event selection
+  // Handle calendar event selection - when user clicks ON an appointment
   const handleEventSelect = (event) => {
-    if (event.isHoliday) return; // Do nothing for holidays
-    
-    if (event.appointment) {
-      setSelectedAppointment(event.appointment);
-      setShowDetailsModal(true);
-    }
+    toast.info(`Clicked: ${event.title}`);
   };
 
   const handleRescheduleClick = () => {
@@ -529,20 +469,24 @@ export default function Appointments() {
     }
   };
 
+  // Get appointments for a specific date
+  const getAppointmentsForDate = (date) => {
+    const dateString = format(date, 'yyyy-MM-dd');
+    return appointments.filter(appointment => {
+      const appointmentDate = appointment.appointmentDate.split('T')[0];
+      return appointmentDate === dateString;
+    });
+  };
+
   const handleSelectSlot = (slotInfo) => {
-    if (viewMode === 'calendar') {
-      const selectedDate = format(slotInfo.start, 'yyyy-MM-dd');
-      const selectedTime = format(slotInfo.start, 'h:mm a');
-      
-      setNewAppointment(prev => ({
-        ...prev,
-        appointmentDate: selectedDate,
-        appointmentTime: selectedTime
-      }));
-      
-      setShowNewAppointmentModal(true);
-      toast.info(`Creating appointment for ${format(slotInfo.start, 'MMM d, yyyy')} at ${selectedTime}`);
-    }
+    // Calendar is for VIEWING appointments only, not creating them
+    // When user clicks a date, show appointments for that date in a modal
+    const selectedDate = slotInfo.start;
+    const dayAppointments = getAppointmentsForDate(selectedDate);
+    
+    setSelectedModalDate(selectedDate);
+    setSelectedDateAppointments(dayAppointments);
+    setShowDateModal(true);
   };
 
   // Custom calendar toolbar component
@@ -770,155 +714,91 @@ export default function Appointments() {
               </button>
             </div>
             
-            {/* Date Range Filters */}
+            {/* Simplified Date Range Filters */}
             <div className="flex gap-2">
               <Button 
-                className={`flex items-center gap-2 px-3 py-2 font-medium ${
-                  dateRange === 'today' 
-                    ? 'bg-soft-olive-500 hover:bg-soft-olive-600 text-white' 
-                    : 'border-soft-olive-300 text-muted-gold hover:bg-soft-olive-50'
-                }`}
-                variant={dateRange === 'today' ? 'default' : 'outline'}
-                onClick={() => setDateRange('today')}
-              >
-                <CalendarIcon className="h-4 w-4" />
-                Today
-              </Button>
-              <Button 
-                className={`flex items-center gap-2 px-3 py-2 font-medium ${
+                className={`flex items-center gap-2 px-3 py-2 font-medium border-2 rounded-md transition-colors duration-150 ${
                   dateRange === 'week' 
-                    ? 'bg-soft-olive-500 hover:bg-soft-olive-600 text-white' 
-                    : 'border-soft-olive-300 text-muted-gold hover:bg-soft-olive-50'
+                    ? 'bg-gray-200 text-black border-black' 
+                    : 'bg-white text-black border-black hover:bg-gray-100' 
                 }`}
-                variant={dateRange === 'week' ? 'default' : 'outline'}
+                variant="ghost"
                 onClick={() => setDateRange('week')}
               >
                 <CalendarIcon className="h-4 w-4" />
-                Week
+                This Week
               </Button>
               <Button 
-                className={`flex items-center gap-2 px-3 py-2 font-medium ${
+                className={`flex items-center gap-2 px-3 py-2 font-medium border-2 rounded-md transition-colors duration-150 ${
                   dateRange === 'month' 
-                    ? 'bg-soft-olive-500 hover:bg-soft-olive-600 text-white' 
-                    : 'border-soft-olive-300 text-muted-gold hover:bg-soft-olive-50'
+                    ? 'bg-gray-200 text-black border-black' 
+                    : 'bg-white text-black border-black hover:bg-gray-100' 
                 }`}
-                variant={dateRange === 'month' ? 'default' : 'outline'}
+                variant="ghost"
                 onClick={() => setDateRange('month')}
               >
                 <CalendarIcon className="h-4 w-4" />
-                Month
+                This Month
               </Button>
               <Button 
-                className={`flex items-center gap-2 px-3 py-2 font-medium ${
+                className={`flex items-center gap-2 px-3 py-2 font-medium border-2 rounded-md transition-colors duration-150 ${
                   dateRange === 'all' 
-                    ? 'bg-muted-gold hover:bg-muted-gold-600 text-white' 
-                    : 'border-soft-olive-300 text-muted-gold hover:bg-soft-olive-50'
+                    ? 'bg-gray-200 text-black border-black' 
+                    : 'bg-white text-black border-black hover:bg-gray-100' 
                 }`}
-                variant={dateRange === 'all' ? 'default' : 'outline'}
+                variant="ghost"
                 onClick={() => setDateRange('all')}
               >
                 <Filter className="h-4 w-4" />
-                All
+                All Time
               </Button>
+            </div>
+            
+            {/* Doctor Filter - Available in both views */}
+            <div className="flex items-center gap-2 bg-white rounded-md border border-soft-olive-300 px-3 py-2">
+              <User className="h-4 w-4 text-muted-gold" />
+              <span className="text-sm text-muted-gold whitespace-nowrap">Doctors:</span>
+              {allDoctorNames.map(doctor => (
+                <div key={doctor} className="flex items-center">
+                  <input
+                    type="checkbox"
+                    id={`filter-${doctor}`}
+                    checked={doctorFilter.includes(doctor)}
+                    onChange={() => handleDoctorFilterChange(doctor)}
+                    className="h-4 w-4 rounded border-gray-300 text-warm-pink focus:ring-warm-pink cursor-pointer"
+                  />
+                  <label htmlFor={`filter-${doctor}`} className="ml-1 text-sm text-charcoal cursor-pointer whitespace-nowrap">
+                    {doctor.includes('Maria') ? 'Dr. Maria' : 'Dr. Shara'}
+                  </label>
+                </div>
+              ))}
             </div>
           </div>
         </CardContent>
       </Card>
 
-      {/* Status Tabs - Only show for list view */}
+      {/* Status Filter Tabs - Modern Segmented Control */}
       {viewMode === 'list' && (
-        <Card className="bg-off-white border border-soft-olive-200 shadow-sm">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-1 bg-white rounded-lg p-1 border border-soft-olive-200">
-                <button
-                  className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
-                    statusTab === 'active'
-                      ? 'bg-warm-pink text-white shadow-sm'
-                      : 'text-charcoal hover:bg-soft-olive-50'
-                  }`}
-                  onClick={() => setStatusTab('active')}
-                >
-                  Active Appointments
-                  <span className="ml-2 px-2 py-1 text-xs bg-soft-olive-100 text-muted-gold rounded-full">
-                    {visibleAppointments.filter(apt => ['scheduled', 'confirmed', 'in-progress'].includes(apt.status)).length}
-                  </span>
-                </button>
-                <button
-                  className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
-                    statusTab === 'completed'
-                      ? 'bg-warm-pink text-white shadow-sm'
-                      : 'text-charcoal hover:bg-soft-olive-50'
-                  }`}
-                  onClick={() => setStatusTab('completed')}
-                >
-                  Completed & Cancelled
-                  <span className="ml-2 px-2 py-1 text-xs bg-soft-olive-100 text-muted-gold rounded-full">
-                    {visibleAppointments.filter(apt => ['completed', 'cancelled', 'no-show'].includes(apt.status)).length}
-                  </span>
-                </button>
-                <button
-                  className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
-                    statusTab === 'all'
-                      ? 'bg-warm-pink text-white shadow-sm'
-                      : 'text-charcoal hover:bg-soft-olive-50'
-                  }`}
-                  onClick={() => setStatusTab('all')}
-                >
-                  All Appointments
-                  <span className="ml-2 px-2 py-1 text-xs bg-soft-olive-100 text-muted-gold rounded-full">
-                    {visibleAppointments.length}
-                  </span>
-                </button>
-              </div>
-              
-              {/* Archive Button */}
-              {statusTab === 'completed' && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="border-muted-gold text-muted-gold hover:bg-muted-gold hover:text-white"
-                  onClick={() => {
-                    // TODO: Implement archive functionality
-                    toast.info('Archive feature coming soon!');
-                  }}
-                >
-                  <Archive className="h-4 w-4 mr-2" />
-                  Archive Old
-                </Button>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Quick Statistics - Only show for list view */}
-      {viewMode === 'list' && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div className="bg-gradient-to-br from-blue-50 to-blue-100 p-4 rounded-lg border border-blue-200">
-            <div className="text-2xl font-bold text-blue-700">
-              {appointments.filter(apt => apt.status === 'scheduled').length}
-            </div>
-            <div className="text-sm text-blue-600">Scheduled</div>
-          </div>
-          <div className="bg-gradient-to-br from-green-50 to-green-100 p-4 rounded-lg border border-green-200">
-            <div className="text-2xl font-bold text-green-700">
-              {appointments.filter(apt => apt.status === 'confirmed').length}
-            </div>
-            <div className="text-sm text-green-600">Confirmed</div>
-          </div>
-          <div className="bg-gradient-to-br from-gray-50 to-gray-100 p-4 rounded-lg border border-gray-200">
-            <div className="text-2xl font-bold text-gray-700">
-              {appointments.filter(apt => apt.status === 'completed').length}
-            </div>
-            <div className="text-sm text-gray-600">Completed</div>
-          </div>
-          <div className="bg-gradient-to-br from-red-50 to-red-100 p-4 rounded-lg border border-red-200">
-            <div className="text-2xl font-bold text-red-700">
-              {appointments.filter(apt => apt.status === 'cancelled').length}
-            </div>
-            <div className="text-sm text-red-600">Cancelled</div>
-          </div>
+        <div className="flex items-center gap-2 bg-white rounded-lg p-2 border border-gray-200 w-fit mb-6">
+          {[
+            { label: 'All', value: 'all' },
+            { label: 'Scheduled', value: 'scheduled' },
+            { label: 'Confirmed', value: 'confirmed' },
+            { label: 'Completed', value: 'completed' },
+            { label: 'Cancelled', value: 'cancelled' },
+          ].map(tab => (
+            <button
+              key={tab.value}
+              className={`px-4 py-2 rounded-md font-medium transition-colors duration-150 text-sm focus:outline-none ${
+                statusFilter === tab.value
+                  ? 'bg-warm-pink text-white shadow font-bold'
+                  : 'bg-transparent text-black hover:bg-gray-100'
+              }`}
+              onClick={() => setStatusFilter(tab.value)}
+            >
+              {tab.label}
+            </button>
+          ))}
         </div>
       )}
 
@@ -933,12 +813,18 @@ export default function Appointments() {
           {viewMode === 'calendar' && (
             <Card className="overflow-hidden shadow-md">
               <div className="flex items-center justify-between bg-white px-6 py-4 border-b">
-                <div className="flex items-center space-x-4">
-                  <h3 className="font-medium text-lg text-gray-800">Calendar</h3>
-                  <div className="bg-clinic-600 text-white px-3 py-1 rounded-full text-sm font-medium">
-                    {format(currentDate, 'MMMM yyyy')}
-                  </div>
+                              <div className="flex items-center space-x-4">
+                <h3 className="font-medium text-lg text-gray-800">Calendar</h3>
+                <div className="bg-clinic-600 text-white px-3 py-1 rounded-full text-sm font-medium">
+                  {format(currentDate, 'MMMM yyyy')}
                 </div>
+                <button 
+                  onClick={() => setCurrentDate(new Date())}
+                  className="text-sm bg-blue-500 text-white px-2 py-1 rounded hover:bg-blue-600"
+                >
+                  Go to Today
+                </button>
+              </div>
                 <div className="flex items-center space-x-2">
                   <input
                     type="date"
@@ -1009,25 +895,6 @@ export default function Appointments() {
                 </div>
               </div>
               
-              <div className="flex border-b">
-                {['month', 'week', 'day', 'agenda'].map((view) => {
-                  const viewName = view.charAt(0).toUpperCase() + view.slice(1);
-                  return (
-                    <button
-                      key={view}
-                      className={`px-4 py-2 text-sm font-medium border-b-2 ${
-                        currentView === view
-                          ? 'border-clinic-600 text-clinic-600'
-                          : 'border-transparent text-gray-600 hover:text-gray-800 hover:border-gray-300'
-                      }`}
-                      onClick={() => setCurrentView(view)}
-                    >
-                      {viewName}
-                    </button>
-                  );
-                })}
-              </div>
-              
               <div className="flex h-[700px]">
                 <div className="hidden md:block w-60 border-r p-4 bg-white overflow-y-auto">
                   <div className="mb-4">
@@ -1050,34 +917,6 @@ export default function Appointments() {
                       ))}
                     </div>
                   </div>
-                  <div className="mb-4">
-                    <div className="text-xs font-medium uppercase tracking-wide text-muted-gold mb-3">
-                      Calendar Legend
-                    </div>
-                    <div className="space-y-3">
-                      <div className="flex items-center text-sm">
-                        <div className="w-4 h-3 rounded-sm mr-3 border-l-4 border-warm-pink" style={{ backgroundColor: '#fce7f3' }}></div>
-                        <span className="text-charcoal">OB-GYNE (Dr. Maria)</span>
-                      </div>
-                      <div className="flex items-center text-sm">
-                        <div className="w-4 h-3 rounded-sm mr-3 border-l-4 border-lime-500" style={{ backgroundColor: '#dce3d5' }}></div>
-                        <span className="text-charcoal">Pediatrics (Dr. Shara)</span>
-                      </div>
-                      <div className="flex items-center text-sm">
-                        <div className="w-4 h-3 rounded-sm mr-3 border-l-4 border-green-500" style={{ backgroundColor: '#d1fae5' }}></div>
-                        <span className="text-charcoal">Completed</span>
-                      </div>
-                      <div className="flex items-center text-sm">
-                        <div className="w-4 h-3 rounded-sm mr-3 border-l-4 border-red-500" style={{ backgroundColor: '#fecaca' }}></div>
-                        <span className="text-charcoal">Cancelled</span>
-                      </div>
-                      <div className="flex items-center text-sm">
-                        <div className="w-4 h-3 rounded-sm mr-3 border-l-4 border-red-500" style={{ backgroundColor: '#fef2f2' }}></div>
-                        <span className="text-charcoal">🎉 Holidays</span>
-                      </div>
-                    </div>
-                  </div>
-                  
                   <div className="mb-4">
                     <div className="text-xs font-medium uppercase tracking-wide text-gray-500 mb-2">
                       Upcoming Holidays
@@ -1135,31 +974,7 @@ export default function Appointments() {
                 </div>
                 
                 <div className="flex-1 overflow-auto bg-white rounded-lg">
-                  {/* Custom Toolbar */}
-                  <CustomToolbar
-                    date={currentDate}
-                    view={currentView}
-                    onNavigate={(action) => {
-                      let newDate = new Date(currentDate);
-                      if (action === 'PREV') {
-                        newDate = currentView === 'month' ? 
-                          new Date(newDate.getFullYear(), newDate.getMonth() - 1) :
-                          currentView === 'week' ?
-                          new Date(newDate.getTime() - 7 * 24 * 60 * 60 * 1000) :
-                          new Date(newDate.getTime() - 24 * 60 * 60 * 1000);
-                      } else if (action === 'NEXT') {
-                        newDate = currentView === 'month' ? 
-                          new Date(newDate.getFullYear(), newDate.getMonth() + 1) :
-                          currentView === 'week' ?
-                          new Date(newDate.getTime() + 7 * 24 * 60 * 60 * 1000) :
-                          new Date(newDate.getTime() + 24 * 60 * 60 * 1000);
-                      } else if (action === 'TODAY') {
-                        newDate = new Date();
-                      }
-                      setCurrentDate(newDate);
-                    }}
-                    onView={setCurrentView}
-                  />
+                
                   
                   {/* Calendar */}
                   <div className="px-4 pb-4" style={{ height: 'calc(100% - 120px)' }}>
@@ -1169,29 +984,26 @@ export default function Appointments() {
                       startAccessor="start"
                       endAccessor="end"
                       style={{ height: '100%' }}
-                      view={currentView}
-                      onView={setCurrentView}
+                      view="month"
+                      views={['month']}
+                      onView={() => {}} // disables view switching
                       date={currentDate}
                       onNavigate={setCurrentDate}
-                      views={['month', 'week', 'day', 'agenda']}
-                      toolbar={false} // Use our custom toolbar
-                      components={{
-                        event: EventComponent
-                      }}
-                      onSelectEvent={handleEventSelect}
-                      onSelectSlot={handleSelectSlot}
-                      selectable
-                      step={30}
-                      timeslots={2}
+                      toolbar={false}
+                      popup={true}
                       eventPropGetter={(event) => ({
                         style: {
-                          backgroundColor: 'transparent', // Let the EventComponent handle colors
-                          border: 'none',
-                          borderRadius: '6px',
-                          padding: '0',
-                          boxShadow: 'none'
+                          backgroundColor: '#4f46e5',
+                          color: 'white',
+                          border: '1px solid #3730a3',
+                          borderRadius: '3px',
+                          fontSize: '11px',
+                          fontWeight: 'bold'
                         }
                       })}
+                      onSelectEvent={handleEventSelect}
+                      onSelectSlot={handleSelectSlot}
+                      selectable={true}
                       dayPropGetter={(date) => {
                         const today = new Date();
                         const isToday = date.getDate() === today.getDate() && 
@@ -1199,6 +1011,10 @@ export default function Appointments() {
                                       date.getFullYear() === today.getFullYear();
                         const isWeekend = date.getDay() === 0 || date.getDay() === 6;
                         const isPast = date < today.setHours(0, 0, 0, 0);
+                        
+                        // Get appointment count for this date
+                        const dayAppointments = getAppointmentsForDate(date);
+                        const appointmentCount = dayAppointments.length;
                         
                         let className = '';
                         let style = {};
@@ -1221,6 +1037,14 @@ export default function Appointments() {
                           };
                         }
                         
+                        // Add appointment count indicator
+                        if (appointmentCount > 0) {
+                          style = {
+                            ...style,
+                            position: 'relative'
+                          };
+                        }
+                        
                         return {
                           className,
                           style: {
@@ -1229,6 +1053,40 @@ export default function Appointments() {
                             margin: '1px'
                           }
                         };
+                      }}
+                      components={{
+                        month: {
+                          dateHeader: ({ date, label }) => {
+                            const dayAppointments = getAppointmentsForDate(date);
+                            const appointmentCount = dayAppointments.length;
+                            
+                            return (
+                              <div style={{ position: 'relative' }}>
+                                <span>{label}</span>
+                                {appointmentCount > 0 && (
+                                  <div style={{
+                                    position: 'absolute',
+                                    top: '-8px',
+                                    right: '-8px',
+                                    backgroundColor: '#dc2626',
+                                    color: 'white',
+                                    borderRadius: '50%',
+                                    width: '20px',
+                                    height: '20px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    fontSize: '10px',
+                                    fontWeight: 'bold',
+                                    zIndex: 10
+                                  }}>
+                                    {appointmentCount}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          }
+                        }
                       }}
                     />
                   </div>
@@ -1245,7 +1103,7 @@ export default function Appointments() {
                   <CardHeader className="bg-gradient-to-r from-warm-pink/10 to-soft-olive-100 border-b border-soft-olive-200">
                     <CardTitle className="flex items-center gap-2 text-charcoal">
                       <div className={`h-3 w-3 rounded-full ${
-                        doctorName.includes('Maria') ? 'bg-warm-pink' : 'bg-muted-gold'
+                        doctorName.includes('Maria') ? 'bg-warm-pink' : 'bg-yellow-400'
                       }`}></div>
                       <span className="font-semibold">{doctorName}</span>
                     </CardTitle>
@@ -1264,7 +1122,7 @@ export default function Appointments() {
                       doctorAppointments.map((appointment) => (
                         <div 
                           key={appointment._id} 
-                          className="bg-white border border-soft-olive-200 rounded-lg p-4 shadow-sm hover:shadow-md transition-shadow"
+                          className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow bg-white"
                         >
                           {/* Patient Info Header */}
                           <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-3 mb-3">
@@ -1277,13 +1135,7 @@ export default function Appointments() {
                                   <h3 className="font-semibold text-charcoal">{getPatientName(appointment)}</h3>
                                   <div className="flex items-center gap-2">
                                     {getStatusIcon(appointment.status)}
-                                    <span className={`px-2 py-0.5 text-xs font-medium rounded-full ${
-                                      appointment.status === 'scheduled' ? 'bg-soft-olive-100 text-soft-olive-700' :
-                                      appointment.status === 'confirmed' ? 'bg-warm-pink/10 text-warm-pink-700' :
-                                      appointment.status === 'completed' ? 'bg-muted-gold/20 text-muted-gold-700' :
-                                      appointment.status === 'cancelled' ? 'bg-red-100 text-red-700' :
-                                      'bg-gray-100 text-gray-700'
-                                    }`}>
+                                    <span className={`px-2 py-0.5 text-xs font-medium rounded-full ${getStatusBadgeClass(appointment.status)}`}>
                                       {appointment.status.charAt(0).toUpperCase() + appointment.status.slice(1)}
                                     </span>
                                   </div>
@@ -1320,7 +1172,7 @@ export default function Appointments() {
                               {appointment.status === 'scheduled' && (
                                 <Button
                                   size="sm"
-                                  className="bg-soft-olive-500 hover:bg-soft-olive-600 text-white"
+                                  className="bg-blue-600 hover:bg-blue-700 text-white font-semibold"
                                   onClick={() => handleConfirmClick(appointment)}
                                 >
                                   <CheckCircle className="h-3 w-3 mr-1" />
@@ -1330,7 +1182,7 @@ export default function Appointments() {
                               {appointment.status === 'confirmed' && (
                                 <Button
                                   size="sm"
-                                  className="bg-warm-pink hover:bg-warm-pink-600 text-white"
+                                  className="bg-green-600 hover:bg-green-700 text-white font-semibold"
                                   onClick={() => handleCompleteClick(appointment)}
                                 >
                                   <CheckCircle className="h-3 w-3 mr-1" />
@@ -1340,8 +1192,7 @@ export default function Appointments() {
                               {(appointment.status === 'scheduled' || appointment.status === 'confirmed') && (
                                 <Button
                                   size="sm"
-                                  variant="outline"
-                                  className="border-muted-gold text-muted-gold hover:bg-muted-gold hover:text-white"
+                                  className="bg-white border border-black text-black font-semibold hover:bg-gray-100 hover:text-black hover:border-black"
                                   onClick={() => handleReschedule(appointment)}
                                 >
                                   <CalendarIcon className="h-3 w-3 mr-1" />
@@ -1351,8 +1202,7 @@ export default function Appointments() {
                               {(appointment.status === 'scheduled' || appointment.status === 'confirmed') && (
                                 <Button
                                   size="sm"
-                                  variant="outline"
-                                  className="border-red-300 text-red-600 hover:bg-red-50 hover:border-red-400"
+                                  className="bg-red-500 hover:bg-red-600 text-white font-semibold"
                                   onClick={() => handleCancelClickModal(appointment)}
                                 >
                                   <X className="h-3 w-3 mr-1" />
@@ -1966,6 +1816,126 @@ export default function Appointments() {
               Cancel Appointment
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Date Appointments Modal */}
+      <Dialog open={showDateModal} onOpenChange={setShowDateModal}>
+        <DialogContent className="sm:max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <CalendarIcon className="h-5 w-5" />
+              Appointments on {selectedModalDate && format(selectedModalDate, 'EEEE, MMMM d, yyyy')}
+            </DialogTitle>
+          </DialogHeader>
+          
+          <div className="space-y-3">
+            {selectedDateAppointments.length === 0 ? (
+              <div className="text-center py-8 text-gray-500">
+                <CalendarIcon className="h-12 w-12 mx-auto mb-3 text-gray-300" />
+                <p className="text-lg">No appointments scheduled</p>
+                <p className="text-sm">This date is free</p>
+              </div>
+            ) : (
+              <>
+                <div className="mb-4 p-3 bg-blue-50 rounded-lg">
+                  <p className="text-sm text-blue-700 font-medium">
+                    {selectedDateAppointments.length} appointment(s) scheduled
+                  </p>
+                </div>
+                
+                {selectedDateAppointments
+                  .sort((a, b) => {
+                    // Sort by time
+                    const timeA = a.appointmentTime;
+                    const timeB = b.appointmentTime;
+                    return timeA.localeCompare(timeB);
+                  })
+                  .map((appointment) => (
+                  <div 
+                    key={appointment._id} 
+                    className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow bg-white"
+                  >
+                    <div className="flex justify-between items-start mb-2">
+                      <div className="flex-1">
+                        <h3 className="font-semibold text-gray-900 flex items-center gap-2">
+                          <User className="h-4 w-4 text-gray-500" />
+                          {getPatientName(appointment)}
+                        </h3>
+                        <div className="flex items-center gap-4 mt-1 text-sm text-gray-600">
+                          <span className="flex items-center gap-1">
+                            <Clock className="h-3 w-3" />
+                            {appointment.appointmentTime}
+                          </span>
+                          <span className="flex items-center gap-1">
+                            <Phone className="h-3 w-3" />
+                            {getContactInfo(appointment)}
+                          </span>
+                        </div>
+                      </div>
+                      
+                      <div className="text-right">
+                        <div className="text-lg font-bold text-black">
+                          {appointment.appointmentTime}
+                        </div>
+                        <div className="flex items-center gap-1">
+                          {getStatusIcon(appointment.status)}
+                          <span className={`px-2 py-0.5 text-xs font-medium rounded-full ${
+                            appointment.status.toLowerCase() === 'confirmed' || appointment.status.toLowerCase() === 'completed'
+                              ? 'bg-green-100 text-green-700'
+                              : appointment.status.toLowerCase() === 'rescheduled'
+                                ? 'bg-yellow-100 text-yellow-800'
+                                : appointment.status.toLowerCase() === 'cancelled'
+                                  ? 'bg-red-100 text-red-700'
+                                  : 'bg-gray-100 text-gray-700'
+                          }`}>
+                            {appointment.status.charAt(0).toUpperCase() + appointment.status.slice(1)}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    <div className="border-t border-gray-100 pt-2 mt-2">
+                      <div className="grid grid-cols-2 gap-4 text-sm">
+                        <div>
+                          <span className="font-medium text-gray-700">Doctor:</span>
+                          <p className={
+                            appointment.doctorName === 'Dr. Maria Sarah L. Manaloto'
+                              ? 'text-warm-pink font-semibold'
+                              : appointment.doctorName === 'Dr. Shara Laine S. Vino'
+                                ? 'text-blue-600 font-semibold'
+                                : 'text-gray-600'
+                          }>{appointment.doctorName}</p>
+                        </div>
+                        <div>
+                          <span className="font-medium text-gray-700">Service:</span>
+                          <p className="text-gray-600">{appointment.serviceType.replace(/_/g, ' ')}</p>
+                        </div>
+                      </div>
+                      
+                      {appointment.reasonForVisit && (
+                        <div className="mt-2">
+                          <span className="font-medium text-gray-700 text-sm">Reason:</span>
+                          <p className="text-gray-600 text-sm italic bg-gray-50 p-2 rounded mt-1">
+                            "{appointment.reasonForVisit}"
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </>
+            )}
+          </div>
+          
+          <div className="flex justify-end gap-2 pt-4 border-t">
+            <Button 
+              variant="outline" 
+              onClick={() => setShowDateModal(false)}
+            >
+              Close
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
     </div>

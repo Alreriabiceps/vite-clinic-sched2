@@ -59,9 +59,14 @@ export const ObGyneOverview = ({ patient }) => {
             <ChecklistItem label="Bronchial Asthma" checked={record.pastMedicalHistory?.bronchialAsthma} />
             <ChecklistItem label="Heart Disease" checked={record.pastMedicalHistory?.heartDisease} />
             <ChecklistItem label="Thyroid Disease" checked={record.pastMedicalHistory?.thyroidDisease} />
-            <InfoItem label="Last Attack" value={record.pastMedicalHistory?.lastAttack} />
-            <InfoItem label="Previous Surgery" value={record.pastMedicalHistory?.previousSurgery} />
+            <InfoItem label="Last Attack Date" value={formatDate(record.pastMedicalHistory?.lastAttack)} />
+            <InfoItem label="Previous Surgery Date" value={formatDate(record.pastMedicalHistory?.previousSurgery)} />
             <InfoItem label="Allergies" value={record.pastMedicalHistory?.allergies} />
+            {record.pastMedicalHistory?.others && (
+              <div className="col-span-2">
+                <InfoItem label="Other Medical History" value={record.pastMedicalHistory?.others} />
+              </div>  
+            )}
           </CardContent>
         </Card>
         <Card className="p-0">

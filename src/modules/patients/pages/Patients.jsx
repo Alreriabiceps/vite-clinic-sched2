@@ -437,7 +437,7 @@ export default function Patients() {
                         <Button 
                           variant="outline" 
                           size="sm"
-                          className="border-muted-gold text-muted-gold hover:bg-muted-gold hover:text-white"
+                          className="border-blue-600 text-white bg-blue-600 hover:bg-blue-700 hover:border-blue-700 transition-colors"
                           onClick={() => navigate(`/patients/${patient._id}`)}
                         >
                           <Edit className="h-3 w-3 mr-1" />

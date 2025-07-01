@@ -132,7 +132,7 @@ const EditObGynePatientModal = ({ patient, onClose, onSuccess }) => {
             <div className="flex justify-between items-center">
                 <CardTitle className="flex items-center gap-2">
                     <Heart className="h-5 w-5" />
-                    Edit OB-GYNE Patient
+                    {`Edit ${formData.patientName || 'Patient'} Information`}
                 </CardTitle>
                 <Button variant="ghost" size="icon" onClick={onClose}>
                     <X className="h-5 w-5" />
@@ -186,11 +186,28 @@ const EditObGynePatientModal = ({ patient, onClose, onSuccess }) => {
                             <label className="flex items-center gap-2 text-sm"><Checkbox name="pastMedicalHistory.hypertension" checked={formData.pastMedicalHistory?.hypertension || false} onCheckedChange={(c) => handleChange({target: {name: 'pastMedicalHistory.hypertension', value: c, type: 'checkbox', checked: c}})} /> Hypertension</label>
                             <label className="flex items-center gap-2 text-sm"><Checkbox name="pastMedicalHistory.diabetes" checked={formData.pastMedicalHistory?.diabetes || false} onCheckedChange={(c) => handleChange({target: {name: 'pastMedicalHistory.diabetes', value: c, type: 'checkbox', checked: c}})} /> Diabetes</label>
                             <label className="flex items-center gap-2 text-sm"><Checkbox name="pastMedicalHistory.bronchialAsthma" checked={formData.pastMedicalHistory?.bronchialAsthma || false} onCheckedChange={(c) => handleChange({target: {name: 'pastMedicalHistory.bronchialAsthma', value: c, type: 'checkbox', checked: c}})} /> Bronchial Asthma</label>
-                            <Input name="pastMedicalHistory.lastAttack" value={formData.pastMedicalHistory?.lastAttack || ''} onChange={handleChange} placeholder="Last Attack" />
+                            <div>
+                                <label className="text-xs text-gray-500">Last Attack Date</label>
+                                <Input name="pastMedicalHistory.lastAttack" value={formData.pastMedicalHistory?.lastAttack?.split('T')[0] || ''} onChange={handleChange} type="date" />
+                            </div>
                             <label className="flex items-center gap-2 text-sm"><Checkbox name="pastMedicalHistory.heartDisease" checked={formData.pastMedicalHistory?.heartDisease || false} onCheckedChange={(c) => handleChange({target: {name: 'pastMedicalHistory.heartDisease', value: c, type: 'checkbox', checked: c}})} /> Heart Disease</label>
                             <label className="flex items-center gap-2 text-sm"><Checkbox name="pastMedicalHistory.thyroidDisease" checked={formData.pastMedicalHistory?.thyroidDisease || false} onCheckedChange={(c) => handleChange({target: {name: 'pastMedicalHistory.thyroidDisease', value: c, type: 'checkbox', checked: c}})} /> Thyroid Disease</label>
-                            <Input name="pastMedicalHistory.previousSurgery" value={formData.pastMedicalHistory?.previousSurgery || ''} onChange={handleChange} placeholder="Previous Surgery" />
+                            <div>
+                                <label className="text-xs text-gray-500">Previous Surgery Date</label>
+                                <Input name="pastMedicalHistory.previousSurgery" value={formData.pastMedicalHistory?.previousSurgery?.split('T')[0] || ''} onChange={handleChange} type="date" />
+                            </div>
                             <Input name="pastMedicalHistory.allergies" value={formData.pastMedicalHistory?.allergies || ''} onChange={handleChange} placeholder="Allergies" />
+                            <div>
+                                <label className="text-xs text-gray-500">Others (specify any additional medical history)</label>
+                                <textarea 
+                                    name="pastMedicalHistory.others" 
+                                    value={formData.pastMedicalHistory?.others || ''} 
+                                    onChange={handleChange} 
+                                    placeholder="Any other medical conditions or history not listed above..."
+                                    className="w-full p-2 border rounded-md text-sm"
+                                    rows={3}
+                                />
+                            </div>
                         </div>
                       </div>
                       <div>

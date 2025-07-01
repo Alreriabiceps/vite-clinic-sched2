@@ -1,2 +1,2 @@
-export { ObGyneOverview } from './ObGyneOverview';
-export { PediatricOverview } from './PediatricOverview'; 
+export { ObGyneOverview } from './ObGyneOverview.jsx';
+export { PediatricOverview } from './PediatricOverview.jsx'; 

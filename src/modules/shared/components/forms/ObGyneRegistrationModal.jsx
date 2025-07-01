@@ -29,11 +29,12 @@ const initialObGyneState = {
     hypertension: false,
     diabetes: false,
     bronchialAsthma: false,
-    lastAttack: '',
+    lastAttack: '', // Will be date picker
     heartDisease: false,
     thyroidDisease: false,
-    previousSurgery: '',
+    previousSurgery: '', // Will be date picker
     allergies: '',
+    others: '', // For additional medical history comments
   },
   
   // Family History
@@ -242,11 +243,28 @@ export default function ObGyneRegistrationModal({ isOpen, onClose, onSuccess }) 
                             <label className="flex items-center gap-2 text-sm"><Checkbox name="pastMedicalHistory.hypertension" checked={formData.pastMedicalHistory.hypertension} onCheckedChange={(c) => handleChange({target: {name: 'pastMedicalHistory.hypertension', value: c, type: 'checkbox', checked: c}})} /> Hypertension</label>
                             <label className="flex items-center gap-2 text-sm"><Checkbox name="pastMedicalHistory.diabetes" checked={formData.pastMedicalHistory.diabetes} onCheckedChange={(c) => handleChange({target: {name: 'pastMedicalHistory.diabetes', value: c, type: 'checkbox', checked: c}})} /> Diabetes</label>
                             <label className="flex items-center gap-2 text-sm"><Checkbox name="pastMedicalHistory.bronchialAsthma" checked={formData.pastMedicalHistory.bronchialAsthma} onCheckedChange={(c) => handleChange({target: {name: 'pastMedicalHistory.bronchialAsthma', value: c, type: 'checkbox', checked: c}})} /> Bronchial Asthma</label>
-                            <Input name="pastMedicalHistory.lastAttack" value={formData.pastMedicalHistory.lastAttack} onChange={handleChange} placeholder="Last Attack" />
+                            <div>
+                                <label className="text-xs text-gray-500">Last Attack Date</label>
+                                <Input name="pastMedicalHistory.lastAttack" value={formData.pastMedicalHistory.lastAttack} onChange={handleChange} type="date" />
+                            </div>
                             <label className="flex items-center gap-2 text-sm"><Checkbox name="pastMedicalHistory.heartDisease" checked={formData.pastMedicalHistory.heartDisease} onCheckedChange={(c) => handleChange({target: {name: 'pastMedicalHistory.heartDisease', value: c, type: 'checkbox', checked: c}})} /> Heart Disease</label>
                             <label className="flex items-center gap-2 text-sm"><Checkbox name="pastMedicalHistory.thyroidDisease" checked={formData.pastMedicalHistory.thyroidDisease} onCheckedChange={(c) => handleChange({target: {name: 'pastMedicalHistory.thyroidDisease', value: c, type: 'checkbox', checked: c}})} /> Thyroid Disease</label>
-                            <Input name="pastMedicalHistory.previousSurgery" value={formData.pastMedicalHistory.previousSurgery} onChange={handleChange} placeholder="Previous Surgery" />
+                            <div>
+                                <label className="text-xs text-gray-500">Previous Surgery Date</label>
+                                <Input name="pastMedicalHistory.previousSurgery" value={formData.pastMedicalHistory.previousSurgery} onChange={handleChange} type="date" />
+                            </div>
                             <Input name="pastMedicalHistory.allergies" value={formData.pastMedicalHistory.allergies} onChange={handleChange} placeholder="Allergies" />
+                            <div>
+                                <label className="text-xs text-gray-500">Others (specify any additional medical history)</label>
+                                <textarea 
+                                    name="pastMedicalHistory.others" 
+                                    value={formData.pastMedicalHistory.others} 
+                                    onChange={handleChange} 
+                                    placeholder="Any other medical conditions or history not listed above..."
+                                    className="w-full p-2 border rounded-md text-sm"
+                                    rows={3}
+                                />
+                            </div>
                         </div>
                       </div>
                       <div>
