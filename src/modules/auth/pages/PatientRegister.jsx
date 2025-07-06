@@ -153,6 +153,7 @@ export default function PatientRegister() {
                   <div>
                     <label className="block text-sm font-medium text-charcoal mb-1">
                       First Name *
+                      <span className="block text-xs text-muted-gold italic font-normal">Unang Pangalan</span>
                     </label>
                     <Input
                       name="firstName"
@@ -169,6 +170,7 @@ export default function PatientRegister() {
                   <div>
                     <label className="block text-sm font-medium text-charcoal mb-1">
                       Last Name *
+                      <span className="block text-xs text-muted-gold italic font-normal">Apelyido</span>
                     </label>
                     <Input
                       name="lastName"
@@ -186,6 +188,7 @@ export default function PatientRegister() {
                 <div>
                   <label className="block text-sm font-medium text-charcoal mb-1">
                     Email Address *
+                    <span className="block text-xs text-muted-gold italic font-normal">Email Address (E-mail)</span>
                   </label>
                   <Input
                     type="email"
@@ -204,6 +207,7 @@ export default function PatientRegister() {
                   <div>
                     <label className="block text-sm font-medium text-charcoal mb-1">
                       Phone Number *
+                      <span className="block text-xs text-muted-gold italic font-normal">Numero ng Telepono</span>
                     </label>
                     <Input
                       name="phoneNumber"
@@ -220,6 +224,7 @@ export default function PatientRegister() {
                   <div>
                     <label className="block text-sm font-medium text-charcoal mb-1">
                       Date of Birth *
+                      <span className="block text-xs text-muted-gold italic font-normal">Araw ng Kapanganakan</span>
                     </label>
                     <Input
                       type="date"
@@ -237,6 +242,7 @@ export default function PatientRegister() {
                 <div>
                   <label className="block text-sm font-medium text-charcoal mb-1">
                     Gender *
+                    <span className="block text-xs text-muted-gold italic font-normal">Kasarian</span>
                   </label>
                   <select
                     name="gender"
@@ -264,6 +270,7 @@ export default function PatientRegister() {
                 <div>
                   <label className="block text-sm font-medium text-charcoal mb-1">
                     Password *
+                    <span className="block text-xs text-muted-gold italic font-normal">Lihim na Salita</span>
                   </label>
                   <div className="relative">
                     <Input
@@ -290,6 +297,7 @@ export default function PatientRegister() {
                 <div>
                   <label className="block text-sm font-medium text-charcoal mb-1">
                     Confirm Password *
+                    <span className="block text-xs text-muted-gold italic font-normal">Kumpirmahin ang Lihim na Salita</span>
                   </label>
                   <div className="relative">
                     <Input

@@ -71,12 +71,19 @@ export const ObGyneOverview = ({ patient }) => {
         </Card>
         <Card className="p-0">
           <CardHeader className="pb-2 border-b">
-            <CardTitle className="text-base font-semibold flex items-center gap-2"><User className="h-4 w-4" /> Family History</CardTitle>
+            <CardTitle className="text-base font-semibold flex items-center gap-2"><User className="h-4 w-4" /> Personal / Social History</CardTitle>
           </CardHeader>
-          <CardContent className="pt-3 pb-2 px-4 grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
-            <ChecklistItem label="Smoker" checked={record.familyHistory?.smoker} />
-            <ChecklistItem label="Alcohol" checked={record.familyHistory?.alcohol} />
-            <ChecklistItem label="Drugs" checked={record.familyHistory?.drugs} />
+          <CardContent className="pt-3 pb-2 px-4 space-y-2 text-sm">
+            <div className="grid grid-cols-2 gap-x-4 gap-y-2">
+              <ChecklistItem label="Smoker" checked={record.familyHistory?.smoker} />
+              <ChecklistItem label="Alcohol" checked={record.familyHistory?.alcohol} />
+              <ChecklistItem label="Drugs" checked={record.familyHistory?.drugs} />
+            </div>
+            {record.familyHistory?.others && (
+              <div className="mt-3 pt-2 border-t">
+                <InfoItem label="Others" value={record.familyHistory.others} />
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>

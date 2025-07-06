@@ -400,6 +400,7 @@ export default function PatientBookAppointment() {
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
                       Relationship
+                      <span className="block text-xs text-muted-gold italic font-normal">Ugnayan (hal. Anak, Asawa, Magulang)</span>
                     </label>
                     <Input
                       name="dependentInfo.relationship"
@@ -412,6 +413,7 @@ export default function PatientBookAppointment() {
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
                       Age
+                      <span className="block text-xs text-muted-gold italic font-normal">Edad</span>
                     </label>
                     <Input
                       type="number"
@@ -439,6 +441,7 @@ export default function PatientBookAppointment() {
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     Patient Name *
+                    <span className="block text-xs text-muted-gold italic font-normal">Pangalan ng Pasyente</span>
                   </label>
                   <Input
                     name="patientName"
@@ -452,6 +455,7 @@ export default function PatientBookAppointment() {
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     Contact Number *
+                    <span className="block text-xs text-muted-gold italic font-normal">Numero ng Telepono</span>
                   </label>
                   <Input
                     name="contactNumber"
@@ -465,6 +469,7 @@ export default function PatientBookAppointment() {
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Reason for Visit
+                  <span className="block text-xs text-muted-gold italic font-normal">Dahilan ng Pagbisita</span>
                 </label>
                 <textarea
                   name="reason"
@@ -568,6 +573,7 @@ export default function PatientBookAppointment() {
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     Select Date
+                    <span className="block text-xs text-muted-gold italic font-normal">Pumili ng Petsa</span>
                   </label>
                   {availableDates.length > 0 && (
                     <div className="mb-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
@@ -641,6 +647,7 @@ export default function PatientBookAppointment() {
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
                       Available Time Slots
+                      <span className="block text-xs text-muted-gold italic font-normal">Mga Oras na Puwede</span>
                     </label>
                     {availableSlots.length > 0 ? (
                       <div className="grid grid-cols-2 md:grid-cols-4 gap-2">

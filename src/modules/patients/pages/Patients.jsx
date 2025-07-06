@@ -50,8 +50,7 @@ export default function Patients() {
       setError('');
       const params = {
         page: currentPage,
-        limit: 10,
-        status: ['Active', 'New']
+        limit: 10
       };
       if (selectedType) {
         params.type = selectedType;

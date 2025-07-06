@@ -42,6 +42,7 @@ const initialObGyneState = {
     smoker: false,
     alcohol: false,
     drugs: false,
+    others: '', // For custom entries
   },
 
   // Gynecologic History
@@ -122,6 +123,37 @@ export default function ObGyneRegistrationModal({ isOpen, onClose, onSuccess }) 
           current = current[keys[i]];
         }
         current[keys[keys.length - 1]] = val;
+        
+        // Auto-calculate AOG when LMP is entered
+        if (name === 'gynecologicHistory.lmp' && val) {
+          const lmpDate = new Date(val);
+          const today = new Date();
+          const diffTime = today - lmpDate;
+          const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+          const weeks = Math.floor(diffDays / 7);
+          const days = diffDays % 7;
+          
+          // Handle both past and future dates
+          if (diffDays >= 0) {
+            const weekText = weeks === 1 ? 'week' : 'weeks';
+            const dayText = days === 1 ? 'day' : 'days';
+            newState.gynecologicHistory.aog = `${weeks} ${weekText} ${days} ${dayText}`;
+          } else {
+            // For future dates (which shouldn't happen in real scenarios)
+            const absDays = Math.abs(diffDays);
+            const absWeeks = Math.floor(absDays / 7);
+            const remainingDays = absDays % 7;
+            const weekText = absWeeks === 1 ? 'week' : 'weeks';
+            const dayText = remainingDays === 1 ? 'day' : 'days';
+            newState.gynecologicHistory.aog = `Future date: ${absWeeks} ${weekText} ${remainingDays} ${dayText} ahead`;
+          }
+          
+          // Auto-calculate EDD by LMP (LMP + 280 days)
+          const eddDate = new Date(lmpDate);
+          eddDate.setDate(eddDate.getDate() + 280);
+          newState.gynecologicHistory.eddByLmp = eddDate.toISOString().split('T')[0];
+        }
+        
         return newState;
       });
     } else {
@@ -268,11 +300,22 @@ export default function ObGyneRegistrationModal({ isOpen, onClose, onSuccess }) 
                         </div>
                       </div>
                       <div>
-                        <h4 className="font-medium mb-2">Family History</h4>
+                        <h4 className="font-medium mb-2">Personal / Social History</h4>
                         <div className="space-y-2">
                             <label className="flex items-center gap-2 text-sm"><Checkbox name="familyHistory.smoker" checked={formData.familyHistory.smoker} onCheckedChange={(c) => handleChange({target: {name: 'familyHistory.smoker', value: c, type: 'checkbox', checked: c}})} /> Smoker</label>
                             <label className="flex items-center gap-2 text-sm"><Checkbox name="familyHistory.alcohol" checked={formData.familyHistory.alcohol} onCheckedChange={(c) => handleChange({target: {name: 'familyHistory.alcohol', value: c, type: 'checkbox', checked: c}})} /> Alcohol</label>
                             <label className="flex items-center gap-2 text-sm"><Checkbox name="familyHistory.drugs" checked={formData.familyHistory.drugs} onCheckedChange={(c) => handleChange({target: {name: 'familyHistory.drugs', value: c, type: 'checkbox', checked: c}})} /> Drugs</label>
+                            <div>
+                                <label className="text-xs text-gray-500">Others (specify any custom entries)</label>
+                                <textarea 
+                                    name="familyHistory.others" 
+                                    value={formData.familyHistory.others} 
+                                    onChange={handleChange} 
+                                    placeholder="Any other personal or social history not listed above..."
+                                    className="w-full p-2 border rounded-md text-sm"
+                                    rows={3}
+                                />
+                            </div>
                         </div>
                       </div>
                   </div>
@@ -300,10 +343,36 @@ export default function ObGyneRegistrationModal({ isOpen, onClose, onSuccess }) 
                 <div className="p-4 border rounded-lg">
                     <h3 className="text-lg font-semibold flex items-center gap-2 mb-4"><Heart className="h-5 w-5 text-pink-600" /> Gynecologic History</h3>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                        <div><label htmlFor="gynecologicHistory.lmp" className="text-sm font-medium">LMP</label><Input id="gynecologicHistory.lmp" name="gynecologicHistory.lmp" value={formData.gynecologicHistory.lmp} onChange={handleChange} type="date" /></div>
+                        <div><label htmlFor="gynecologicHistory.lmp" className="text-sm font-medium">LMP (Last Menstrual Period)</label><Input id="gynecologicHistory.lmp" name="gynecologicHistory.lmp" value={formData.gynecologicHistory.lmp} onChange={handleChange} type="date" /></div>
                         <div><label htmlFor="gynecologicHistory.pmp" className="text-sm font-medium">PMP</label><Input id="gynecologicHistory.pmp" name="gynecologicHistory.pmp" value={formData.gynecologicHistory.pmp} onChange={handleChange} type="date" /></div>
-                        <div><label htmlFor="gynecologicHistory.aog" className="text-sm font-medium">AOG</label><Input id="gynecologicHistory.aog" name="gynecologicHistory.aog" value={formData.gynecologicHistory.aog} onChange={handleChange} /></div>
-                        <div><label htmlFor="gynecologicHistory.eddByLmp" className="text-sm font-medium">EDD by LMP</label><Input id="gynecologicHistory.eddByLmp" name="gynecologicHistory.eddByLmp" value={formData.gynecologicHistory.eddByLmp} onChange={handleChange} type="date" /></div>
+                        <div>
+                            <label htmlFor="gynecologicHistory.aog" className="text-sm font-medium">
+                                AOG (Age of Gestation) 
+                                <span className="text-xs text-gray-500 font-normal"> - Auto-calculated</span>
+                            </label>
+                            <Input 
+                                id="gynecologicHistory.aog" 
+                                name="gynecologicHistory.aog" 
+                                value={formData.gynecologicHistory.aog} 
+                                readOnly 
+                                className="bg-gray-50 text-gray-700"
+                                placeholder="Will auto-calculate when LMP is entered"
+                            />
+                        </div>
+                        <div>
+                            <label htmlFor="gynecologicHistory.eddByLmp" className="text-sm font-medium">
+                                EDD by LMP (Expected Date of Delivery)
+                                <span className="text-xs text-gray-500 font-normal"> - Auto-calculated</span>
+                            </label>
+                            <Input 
+                                id="gynecologicHistory.eddByLmp" 
+                                name="gynecologicHistory.eddByLmp" 
+                                value={formData.gynecologicHistory.eddByLmp} 
+                                readOnly 
+                                className="bg-gray-50 text-gray-700"
+                                type="date"
+                            />
+                        </div>
                         <div><label htmlFor="gynecologicHistory.earlyUltrasound" className="text-sm font-medium">Early Ultrasound</label><Input id="gynecologicHistory.earlyUltrasound" name="gynecologicHistory.earlyUltrasound" value={formData.gynecologicHistory.earlyUltrasound} onChange={handleChange} type="date" /></div>
                         <div><label htmlFor="gynecologicHistory.aogByEutz" className="text-sm font-medium">AOG by EUTZ</label><Input id="gynecologicHistory.aogByEutz" name="gynecologicHistory.aogByEutz" value={formData.gynecologicHistory.aogByEutz} onChange={handleChange} /></div>
                         <div><label htmlFor="gynecologicHistory.eddByEutz" className="text-sm font-medium">EDD by EUTZ</label><Input id="gynecologicHistory.eddByEutz" name="gynecologicHistory.eddByEutz" value={formData.gynecologicHistory.eddByEutz} onChange={handleChange} type="date" /></div>

@@ -5,7 +5,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { 
   ArrowLeft, Edit, Trash2, Plus, Calendar, Phone, Mail, MapPin, 
   Heart, Baby, User, Activity, FileText, Syringe, Stethoscope,
-  AlertCircle, CheckCircle, ShieldCheck, Beaker
+  AlertCircle, CheckCircle, ShieldCheck, Beaker, Save, X, Edit3
 } from 'lucide-react';
 // Helper component for displaying info items
 const InfoItem = ({ label, value, className = '' }) => (
@@ -100,6 +100,9 @@ const PatientDetail = () => {
   const [consultationModalOpen, setConsultationModalOpen] = useState(false);
   const [immunizationModalOpen, setImmunizationModalOpen] = useState(false);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [editingDiagnosis, setEditingDiagnosis] = useState(null);
+  const [diagnosisValue, setDiagnosisValue] = useState('');
+  const [savingDiagnosis, setSavingDiagnosis] = useState(false);
 
   useEffect(() => {
     if (patientId) {
@@ -110,13 +113,14 @@ const PatientDetail = () => {
   const fetchPatientData = async () => {
     setLoading(true);
     try {
-      const [patientResponse, appointmentsResponse] = await Promise.all([
-        patientsAPI.getById(patientId),
-        appointmentsAPI.getAll({ patientId })
-      ]);
-      
+      // First get patient data
+      const patientResponse = await patientsAPI.getById(patientId);
       console.log('Patient data:', patientResponse.data);
       setPatient(patientResponse.data);
+      
+      // Then get appointments using the patient's patientId field
+      const appointmentsResponse = await appointmentsAPI.getAll({ patientId: patientResponse.data.patientId });
+      console.log('Fetching appointments for patientId:', patientResponse.data.patientId);
       setAppointments(appointmentsResponse.data?.data?.appointments || []);
     } catch (error) {
       console.error('Error fetching patient data:', error);
@@ -148,6 +152,39 @@ const PatientDetail = () => {
       toast.error('Failed to delete patient');
     }
     setDeleteModalOpen(false);
+  };
+
+  const handleEditDiagnosis = (appointmentId, currentDiagnosis) => {
+    setEditingDiagnosis(appointmentId);
+    setDiagnosisValue(currentDiagnosis || '');
+  };
+
+  const handleSaveDiagnosis = async (appointmentId) => {
+    setSavingDiagnosis(true);
+    try {
+      await appointmentsAPI.updateDiagnosis(appointmentId, diagnosisValue);
+      
+      // Update the local appointments state
+      setAppointments(prev => prev.map(apt => 
+        apt._id === appointmentId 
+          ? { ...apt, diagnosis: diagnosisValue }
+          : apt
+      ));
+      
+      setEditingDiagnosis(null);
+      setDiagnosisValue('');
+      toast.success('Diagnosis updated successfully');
+    } catch (error) {
+      console.error('Error updating diagnosis:', error);
+      toast.error('Failed to update diagnosis');
+    } finally {
+      setSavingDiagnosis(false);
+    }
+  };
+
+  const handleCancelDiagnosis = () => {
+    setEditingDiagnosis(null);
+    setDiagnosisValue('');
   };
 
   const getPatientName = (patient) => {
@@ -338,8 +375,58 @@ const PatientDetail = () => {
                 {appointments.map((appointment, index) => (
                   <div key={index} className="border rounded-lg p-4">
                     <div className="flex justify-between items-start">
-                      <div>
-                        <h4 className="font-medium text-gray-900">{appointment.serviceType}</h4>
+                      <div className="flex-1">
+                        {/* Editable Diagnosis Field */}
+                        <div className="mb-2">
+                          {editingDiagnosis === appointment._id ? (
+                            <div className="flex items-center space-x-2">
+                              <textarea
+                                value={diagnosisValue}
+                                onChange={(e) => setDiagnosisValue(e.target.value)}
+                                placeholder="Enter diagnosis..."
+                                className="flex-1 p-2 border border-gray-300 rounded-md resize-none"
+                                rows="2"
+                                autoFocus
+                              />
+                              <div className="flex flex-col space-y-1">
+                                <Button
+                                  size="sm"
+                                  onClick={() => handleSaveDiagnosis(appointment._id)}
+                                  disabled={savingDiagnosis}
+                                  className="bg-green-600 hover:bg-green-700 text-white px-2 py-1"
+                                >
+                                  {savingDiagnosis ? <LoadingSpinner size="sm" /> : <Save className="h-3 w-3" />}
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={handleCancelDiagnosis}
+                                  disabled={savingDiagnosis}
+                                  className="px-2 py-1"
+                                >
+                                  <X className="h-3 w-3" />
+                                </Button>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="flex items-start space-x-2">
+                              <div className="flex-1">
+                                <h4 className="font-medium text-gray-900">
+                                  {appointment.diagnosis || 'No diagnosis provided'}
+                                </h4>
+                              </div>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => handleEditDiagnosis(appointment._id, appointment.diagnosis)}
+                                className="px-2 py-1 text-blue-600 hover:text-blue-700"
+                              >
+                                <Edit3 className="h-3 w-3" />
+                              </Button>
+                            </div>
+                          )}
+                        </div>
+                        
                         <p className="text-sm text-gray-600">
                           Dr. {appointment.doctorName} • {formatDate(appointment.appointmentDate)} at {appointment.appointmentTime}
                         </p>
