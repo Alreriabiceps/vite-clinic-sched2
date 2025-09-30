@@ -1,5 +1,5 @@
-import { Card, CardContent, CardHeader, CardTitle } from '../../shared';
-import { Heart } from 'lucide-react';
+import { Card, CardContent, CardHeader, CardTitle } from "../../shared";
+import { Heart } from "lucide-react";
 
 export default function TermsOfService() {
   return (
@@ -9,10 +9,14 @@ export default function TermsOfService() {
         <div className="text-center mb-8">
           <div className="flex items-center justify-center gap-2 mb-4">
             <Heart className="h-8 w-8 text-clinic-600" />
-            <h1 className="text-2xl font-bold text-gray-900">VM Mother and Child Clinic</h1>
+            <h1 className="text-2xl font-bold text-gray-900">
+              VM Mother and Child Clinic
+            </h1>
           </div>
           <h2 className="text-3xl font-bold text-gray-900">Terms of Service</h2>
-          <p className="text-gray-600 mt-2">Last updated: {new Date().toLocaleDateString()}</p>
+          <p className="text-gray-600 mt-2">
+            Last updated: {new Date().toLocaleDateString()}
+          </p>
         </div>
 
         <Card className="shadow-lg">
@@ -21,89 +25,138 @@ export default function TermsOfService() {
           </CardHeader>
           <CardContent className="space-y-6 text-gray-600">
             <section>
-              <h3 className="text-xl font-semibold text-gray-900 mb-3">1. Acceptance of Terms</h3>
+              <h3 className="text-xl font-semibold text-gray-900 mb-3">
+                1) What this portal is for
+              </h3>
               <p>
-                By accessing and using the services of VM Mother and Child Clinic, you agree to be bound by these Terms of Service. If you do not agree to these terms, please do not use our services.
+                The VM Mother and Child Clinic portal lets you: create a patient
+                account, book and manage appointments with our OB‑GYNE and
+                Pediatric doctors, view basic appointment history, and receive
+                reminders/updates by SMS or email. It is not an emergency
+                service and does not replace in‑person consultations.
               </p>
             </section>
 
             <section>
-              <h3 className="text-xl font-semibold text-gray-900 mb-3">2. Medical Services</h3>
-              <p className="mb-2">Our services include:</p>
+              <h3 className="text-xl font-semibold text-gray-900 mb-3">
+                2) Booking, rescheduling, cancellations
+              </h3>
               <ul className="list-disc pl-6 space-y-2">
-                <li>Pediatric care and consultations</li>
-                <li>OB-GYNE services and consultations</li>
-                <li>Appointment scheduling and management</li>
-                <li>Medical record management</li>
-                <li>Emergency care services</li>
+                <li>
+                  Staff and patient users can request available time slots shown
+                  in the system. Staff may adjust slots based on clinical
+                  priorities.
+                </li>
+                <li>
+                  Cancel or reschedule at least 24 hours before your visit
+                  through the portal or by contacting the clinic.
+                </li>
+                <li>
+                  No‑show policy: after 3 documented no‑shows in 12 months, your
+                  account may be flagged and future bookings may require
+                  confirmation by phone.
+                </li>
+                <li>
+                  Late arrival over 15 minutes may result in re‑queuing or
+                  rescheduling to the next available time.
+                </li>
               </ul>
             </section>
 
             <section>
-              <h3 className="text-xl font-semibold text-gray-900 mb-3">3. Patient Responsibilities</h3>
-              <p className="mb-2">As a patient, you agree to:</p>
+              <h3 className="text-xl font-semibold text-gray-900 mb-3">
+                3) Medical records and results
+              </h3>
               <ul className="list-disc pl-6 space-y-2">
-                <li>Provide accurate and complete personal information</li>
-                <li>Keep your account credentials secure</li>
-                <li>Attend scheduled appointments on time</li>
-                <li>Follow medical advice and treatment plans</li>
-                <li>Pay for services rendered</li>
-                <li>Notify us of any changes in your information</li>
+                <li>
+                  The portal stores appointment details and selected clinical
+                  notes to support your care within our clinic.
+                </li>
+                <li>
+                  Only authorized clinic staff can edit medical entries.
+                  Patients may request corrections to their demographic
+                  information through the portal.
+                </li>
+                <li>
+                  Do not upload photos or documents that contain other people’s
+                  data without their consent.
+                </li>
               </ul>
             </section>
 
             <section>
-              <h3 className="text-xl font-semibold text-gray-900 mb-3">4. Appointment Policy</h3>
-              <p className="mb-2">Our appointment policies include:</p>
+              <h3 className="text-xl font-semibold text-gray-900 mb-3">
+                4) Payments
+              </h3>
               <ul className="list-disc pl-6 space-y-2">
-                <li>24-hour cancellation notice required</li>
-                <li>Late arrival may result in rescheduling</li>
-                <li>Emergency cases may be prioritized</li>
-                <li>Appointments can be rescheduled through our portal</li>
+                <li>
+                  Professional fees and services are payable at the clinic. If
+                  online payments are offered, the exact amount will be shown
+                  before you confirm.
+                </li>
+                <li>
+                  Refunds for cancelled services follow clinic policy and
+                  applicable law.
+                </li>
               </ul>
             </section>
 
             <section>
-              <h3 className="text-xl font-semibold text-gray-900 mb-3">5. Payment Terms</h3>
-              <p className="mb-2">Payment policies:</p>
+              <h3 className="text-xl font-semibold text-gray-900 mb-3">
+                5) Acceptable use
+              </h3>
               <ul className="list-disc pl-6 space-y-2">
-                <li>Payment is due at the time of service</li>
-                <li>We accept various payment methods</li>
-                <li>Insurance claims will be processed as per policy</li>
-                <li>Outstanding balances must be settled promptly</li>
+                <li>
+                  Provide true, accurate information and keep your login secure.
+                  You are responsible for actions taken under your account.
+                </li>
+                <li>
+                  Do not attempt to access other patients’ data, bypass
+                  security, or misuse the portal.
+                </li>
+                <li>
+                  The portal may send transactional messages (e.g., reminders,
+                  status updates). Message and data rates may apply.
+                </li>
               </ul>
             </section>
 
             <section>
-              <h3 className="text-xl font-semibold text-gray-900 mb-3">6. Emergency Services</h3>
+              <h3 className="text-xl font-semibold text-gray-900 mb-3">
+                6) Disclaimers and liability
+              </h3>
               <p>
-                In case of medical emergencies, please call emergency services immediately. Our clinic provides emergency care during operating hours, but for life-threatening situations, please go to the nearest emergency room.
+                Information in the portal is for your care at our clinic. We
+                provide the portal on an “as is” basis and do not guarantee
+                uninterrupted access. To the extent allowed by law, the clinic
+                is not liable for indirect or consequential damages from use of
+                the portal.
               </p>
             </section>
 
             <section>
-              <h3 className="text-xl font-semibold text-gray-900 mb-3">7. Limitation of Liability</h3>
+              <h3 className="text-xl font-semibold text-gray-900 mb-3">
+                7) Changes
+              </h3>
               <p>
-                While we strive to provide the best possible care, we cannot guarantee specific outcomes. We are not liable for any indirect, incidental, or consequential damages arising from the use of our services.
+                We may update these terms to reflect operational or legal
+                changes. The effective date appears at the top. Continued use
+                means you accept the updated terms.
               </p>
             </section>
 
             <section>
-              <h3 className="text-xl font-semibold text-gray-900 mb-3">8. Changes to Terms</h3>
-              <p>
-                We reserve the right to modify these terms at any time. Changes will be effective immediately upon posting to our website. Continued use of our services constitutes acceptance of the modified terms.
-              </p>
-            </section>
-
-            <section>
-              <h3 className="text-xl font-semibold text-gray-900 mb-3">9. Contact Information</h3>
-              <p>
-                For questions about these Terms of Service, please contact us at:
-              </p>
+              <h3 className="text-xl font-semibold text-gray-900 mb-3">
+                8) Contact
+              </h3>
+              <p>Questions about these terms:</p>
               <div className="mt-2">
                 <p>Phone: 0962 695 2050</p>
-                <p>Address: San Nicolas Arayat Pampanga</p>
-                <p className="text-sm text-gray-500">(Beside "Buff. It Up Auto Spa and Detailing" and In front of INC-San Nicolas)</p>
+                <p>Address: San Nicolas, Arayat, Pampanga</p>
+                <p className="text-sm text-gray-500">
+                  (Beside “Buff. It Up Auto Spa and Detailing” and in front of
+                  INC‑San Nicolas)
+                </p>
               </div>
             </section>
           </CardContent>
@@ -111,4 +164,4 @@ export default function TermsOfService() {
       </div>
     </div>
   );
-} 
+}

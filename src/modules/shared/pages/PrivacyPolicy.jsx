@@ -1,5 +1,5 @@
-import { Card, CardContent, CardHeader, CardTitle } from '../../shared';
-import { Heart } from 'lucide-react';
+import { Card, CardContent, CardHeader, CardTitle } from "../../shared";
+import { Heart } from "lucide-react";
 
 export default function PrivacyPolicy() {
   return (
@@ -9,10 +9,14 @@ export default function PrivacyPolicy() {
         <div className="text-center mb-8">
           <div className="flex items-center justify-center gap-2 mb-4">
             <Heart className="h-8 w-8 text-clinic-600" />
-            <h1 className="text-2xl font-bold text-gray-900">VM Mother and Child Clinic</h1>
+            <h1 className="text-2xl font-bold text-gray-900">
+              VM Mother and Child Clinic
+            </h1>
           </div>
           <h2 className="text-3xl font-bold text-gray-900">Privacy Policy</h2>
-          <p className="text-gray-600 mt-2">Last updated: {new Date().toLocaleDateString()}</p>
+          <p className="text-gray-600 mt-2">
+            Last updated: {new Date().toLocaleDateString()}
+          </p>
         </div>
 
         <Card className="shadow-lg">
@@ -21,75 +25,127 @@ export default function PrivacyPolicy() {
           </CardHeader>
           <CardContent className="space-y-6 text-gray-600">
             <section>
-              <h3 className="text-xl font-semibold text-gray-900 mb-3">1. Introduction</h3>
+              <h3 className="text-xl font-semibold text-gray-900 mb-3">
+                1) Who we are
+              </h3>
               <p>
-                VM Mother and Child Clinic ("we," "our," or "us") is committed to protecting your privacy. This Privacy Policy explains how we collect, use, disclose, and safeguard your information when you use our services.
+                VM Mother and Child Clinic provides OB‑GYNE and Pediatric
+                services. This policy explains how the portal handles your
+                information.
               </p>
             </section>
 
             <section>
-              <h3 className="text-xl font-semibold text-gray-900 mb-3">2. Information We Collect</h3>
-              <p className="mb-2">We collect the following types of information:</p>
+              <h3 className="text-xl font-semibold text-gray-900 mb-3">
+                2) Data we collect in this system
+              </h3>
               <ul className="list-disc pl-6 space-y-2">
-                <li>Personal Information (name, contact details, date of birth, gender)</li>
-                <li>Medical Information (medical history, diagnoses, treatments)</li>
-                <li>Payment Information (for billing purposes)</li>
-                <li>Usage Data (how you interact with our services)</li>
+                <li>
+                  Account data: name, email, phone, date of birth, gender.
+                </li>
+                <li>
+                  Appointment data: doctor, date/time, service type, status,
+                  notes.
+                </li>
+                <li>
+                  Clinical notes entered by staff during care (limited to what’s
+                  needed for your visit).
+                </li>
+                <li>
+                  Technical data: device/browser info and usage for security and
+                  reliability.
+                </li>
               </ul>
             </section>
 
             <section>
-              <h3 className="text-xl font-semibold text-gray-900 mb-3">3. How We Use Your Information</h3>
-              <p className="mb-2">We use your information to:</p>
+              <h3 className="text-xl font-semibold text-gray-900 mb-3">
+                3) How we use it
+              </h3>
               <ul className="list-disc pl-6 space-y-2">
-                <li>Provide medical services and care</li>
-                <li>Schedule and manage appointments</li>
-                <li>Process payments and insurance claims</li>
-                <li>Send appointment reminders and updates</li>
-                <li>Improve our services</li>
-                <li>Comply with legal obligations</li>
+                <li>To create and manage your portal account.</li>
+                <li>
+                  To schedule, confirm, reschedule, or cancel appointments.
+                </li>
+                <li>
+                  To send reminders and updates (SMS/email/push if enabled).
+                </li>
+                <li>To support clinical care and maintain accurate records.</li>
+                <li>To secure the system and prevent fraud or abuse.</li>
               </ul>
             </section>
 
             <section>
-              <h3 className="text-xl font-semibold text-gray-900 mb-3">4. Data Protection</h3>
+              <h3 className="text-xl font-semibold text-gray-900 mb-3">
+                4) Sharing
+              </h3>
+              <ul className="list-disc pl-6 space-y-2">
+                <li>
+                  Within the clinic with authorized staff involved in your care.
+                </li>
+                <li>
+                  With service providers that host or support the system (under
+                  confidentiality agreements).
+                </li>
+                <li>
+                  With insurers or authorities where required by law or for
+                  billing, with appropriate safeguards.
+                </li>
+              </ul>
+            </section>
+
+            <section>
+              <h3 className="text-xl font-semibold text-gray-900 mb-3">
+                5) Retention and security
+              </h3>
               <p>
-                We implement appropriate security measures to protect your personal information from unauthorized access, alteration, disclosure, or destruction. All medical records are kept confidential and are only accessible to authorized personnel.
+                Records are retained as required by medical and accounting
+                rules. We use role‑based access, transport encryption (HTTPS),
+                and audit logging where applicable.
               </p>
             </section>
 
             <section>
-              <h3 className="text-xl font-semibold text-gray-900 mb-3">5. Data Sharing</h3>
-              <p className="mb-2">We may share your information with:</p>
+              <h3 className="text-xl font-semibold text-gray-900 mb-3">
+                6) Your choices
+              </h3>
               <ul className="list-disc pl-6 space-y-2">
-                <li>Healthcare providers involved in your care</li>
-                <li>Insurance companies for billing purposes</li>
-                <li>Legal authorities when required by law</li>
-                <li>Service providers who assist in our operations</li>
+                <li>
+                  Access or correct your details via the portal or by contacting
+                  us.
+                </li>
+                <li>
+                  Request a copy of your records subject to clinical review and
+                  legal requirements.
+                </li>
+                <li>
+                  Withdraw consent for reminders/marketing where applicable
+                  (transactional messages may still be sent).
+                </li>
               </ul>
             </section>
 
             <section>
-              <h3 className="text-xl font-semibold text-gray-900 mb-3">6. Your Rights</h3>
-              <p className="mb-2">You have the right to:</p>
-              <ul className="list-disc pl-6 space-y-2">
-                <li>Access your personal information</li>
-                <li>Request corrections to your information</li>
-                <li>Request deletion of your information</li>
-                <li>Object to processing of your information</li>
-                <li>Withdraw consent at any time</li>
-              </ul>
-            </section>
-
-            <section>
-              <h3 className="text-xl font-semibold text-gray-900 mb-3">9. Contact Information</h3>
+              <h3 className="text-xl font-semibold text-gray-900 mb-3">
+                7) Children
+              </h3>
               <p>
-                For questions about our Privacy Policy, please contact us at:
+                For pediatric patients, parents or legal guardians manage the
+                child’s records and consent.
               </p>
+            </section>
+
+            <section>
+              <h3 className="text-xl font-semibold text-gray-900 mb-3">
+                8) Contact
+              </h3>
               <div className="mt-2">
                 <p>Phone: 0962 695 2050</p>
-                <p>Address: San Nicolas Arayat Pampanga</p>
-                <p className="text-sm text-gray-500">(Beside "Buff. It Up Auto Spa and Detailing" and In front of INC-San Nicolas)</p>
+                <p>Address: San Nicolas, Arayat, Pampanga</p>
+                <p className="text-sm text-gray-500">
+                  (Beside “Buff. It Up Auto Spa and Detailing” and in front of
+                  INC‑San Nicolas)
+                </p>
               </div>
             </section>
           </CardContent>
@@ -97,4 +153,4 @@ export default function PrivacyPolicy() {
       </div>
     </div>
   );
-} 
+}

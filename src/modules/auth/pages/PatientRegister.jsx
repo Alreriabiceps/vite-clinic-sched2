@@ -1,38 +1,79 @@
-import { Card, CardContent, CardDescription, CardHeader, CardTitle, Button, Input, LoadingSpinner, usePatientAuth, Checkbox } from '../../shared';
-import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { Heart, ArrowLeft, Eye, EyeOff } from 'lucide-react';
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+  Button,
+  Input,
+  LoadingSpinner,
+  usePatientAuth,
+  Checkbox,
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "../../shared";
+import { useState, useEffect } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import { Heart, ArrowLeft, Eye, EyeOff } from "lucide-react";
 export default function PatientRegister() {
   const navigate = useNavigate();
   const { register, loading } = usePatientAuth();
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [formData, setFormData] = useState({
-    firstName: '',
-    lastName: '',
-    email: '',
-    password: '',
-    confirmPassword: '',
-    phoneNumber: '',
-    dateOfBirth: '',
-    gender: '',
-    consent: false
+    firstName: "",
+    lastName: "",
+    email: "",
+    password: "",
+    confirmPassword: "",
+    phoneNumber: "",
+    dateOfBirth: "",
+    gender: "",
+    consent: false,
   });
   const [errors, setErrors] = useState({});
+  // Consent modal
+  const [showConsent, setShowConsent] = useState(false);
+  const [consentTimer, setConsentTimer] = useState(0);
+  const [consentAccepted, setConsentAccepted] = useState(false);
+
+  // Timer effect for consent modal
+  useEffect(() => {
+    let interval;
+    if (showConsent && consentTimer < 3) {
+      interval = setInterval(() => {
+        setConsentTimer((prev) => prev + 1);
+      }, 1000);
+    }
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [showConsent, consentTimer]);
+
+  // Reset timer when modal opens
+  useEffect(() => {
+    if (showConsent) {
+      setConsentTimer(0);
+      setConsentAccepted(false);
+    }
+  }, [showConsent]);
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
-    
-    setFormData(prev => ({
+
+    setFormData((prev) => ({
       ...prev,
-      [name]: value
+      [name]: value,
     }));
-    
+
     // Clear error when user starts typing
     if (errors[name]) {
-      setErrors(prev => ({
+      setErrors((prev) => ({
         ...prev,
-        [name]: ''
+        [name]: "",
       }));
     }
   };
@@ -41,36 +82,41 @@ export default function PatientRegister() {
     const newErrors = {};
 
     // Required fields validation
-    if (!formData.firstName.trim()) newErrors.firstName = 'First name is required';
-    if (!formData.lastName.trim()) newErrors.lastName = 'Last name is required';
-    if (!formData.email.trim()) newErrors.email = 'Email is required';
-    if (!formData.password) newErrors.password = 'Password is required';
-    if (!formData.confirmPassword) newErrors.confirmPassword = 'Please confirm your password';
-    if (!formData.phoneNumber.trim()) newErrors.phoneNumber = 'Phone number is required';
-    if (!formData.dateOfBirth) newErrors.dateOfBirth = 'Date of birth is required';
-    if (!formData.gender) newErrors.gender = 'Gender is required';
-    if (!formData.consent) newErrors.consent = 'You must agree to the terms and conditions';
+    if (!formData.firstName.trim())
+      newErrors.firstName = "First name is required";
+    if (!formData.lastName.trim()) newErrors.lastName = "Last name is required";
+    if (!formData.email.trim()) newErrors.email = "Email is required";
+    if (!formData.password) newErrors.password = "Password is required";
+    if (!formData.confirmPassword)
+      newErrors.confirmPassword = "Please confirm your password";
+    if (!formData.phoneNumber.trim())
+      newErrors.phoneNumber = "Phone number is required";
+    if (!formData.dateOfBirth)
+      newErrors.dateOfBirth = "Date of birth is required";
+    if (!formData.gender) newErrors.gender = "Gender is required";
+    if (!formData.consent)
+      newErrors.consent = "You must agree to the terms and conditions";
 
     // Email validation
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (formData.email && !emailRegex.test(formData.email)) {
-      newErrors.email = 'Please enter a valid email address';
+      newErrors.email = "Please enter a valid email address";
     }
 
     // Password validation
     if (formData.password && formData.password.length < 8) {
-      newErrors.password = 'Password must be at least 8 characters long';
+      newErrors.password = "Password must be at least 8 characters long";
     }
 
     // Password match validation
     if (formData.password !== formData.confirmPassword) {
-      newErrors.confirmPassword = 'Passwords do not match';
+      newErrors.confirmPassword = "Passwords do not match";
     }
 
     // Phone number validation (basic)
     const phoneRegex = /^[\d\s\-\(\)\+]+$/;
     if (formData.phoneNumber && !phoneRegex.test(formData.phoneNumber)) {
-      newErrors.phoneNumber = 'Please enter a valid phone number';
+      newErrors.phoneNumber = "Please enter a valid phone number";
     }
 
     // Age validation (must be at least 1 year old)
@@ -79,17 +125,20 @@ export default function PatientRegister() {
       const today = new Date();
       let age = today.getFullYear() - birthDate.getFullYear();
       const monthDiff = today.getMonth() - birthDate.getMonth();
-      
-      if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+
+      if (
+        monthDiff < 0 ||
+        (monthDiff === 0 && today.getDate() < birthDate.getDate())
+      ) {
         age--;
       }
-      
+
       if (age < 1) {
-        newErrors.dateOfBirth = 'Patient must be at least 1 year old';
+        newErrors.dateOfBirth = "Patient must be at least 1 year old";
       }
-      
+
       if (birthDate > today) {
-        newErrors.dateOfBirth = 'Date of birth cannot be in the future';
+        newErrors.dateOfBirth = "Date of birth cannot be in the future";
       }
     }
 
@@ -98,7 +147,7 @@ export default function PatientRegister() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
+
     const validationErrors = validateForm();
     if (Object.keys(validationErrors).length > 0) {
       setErrors(validationErrors);
@@ -107,16 +156,16 @@ export default function PatientRegister() {
 
     // Prepare data for submission
     const registrationData = {
-      ...formData
+      ...formData,
     };
-    
+
     // Remove confirmPassword from the data sent to backend
     delete registrationData.confirmPassword;
 
     const result = await register(registrationData);
-    
+
     if (result.success) {
-      navigate('/patient/dashboard');
+      navigate("/patient/dashboard");
     }
   };
 
@@ -125,20 +174,27 @@ export default function PatientRegister() {
       <div className="w-full max-w-2xl">
         {/* Header */}
         <div className="text-center mb-8">
-          <Link to="/patient" className="inline-flex items-center gap-2 text-warm-pink hover:text-warm-pink-700 mb-4">
+          <Link
+            to="/patient"
+            className="inline-flex items-center gap-2 text-warm-pink hover:text-warm-pink-700 mb-4"
+          >
             <ArrowLeft className="h-4 w-4" />
             Back to Portal
           </Link>
           <div className="flex items-center justify-center gap-2 mb-4">
             <Heart className="h-8 w-8 text-warm-pink" />
-            <h1 className="text-2xl font-bold text-charcoal">VM Mother and Child Clinic</h1>
+            <h1 className="text-2xl font-bold text-charcoal">
+              VM Mother and Child Clinic
+            </h1>
           </div>
           <p className="text-muted-gold">Create your patient account</p>
         </div>
 
         <Card className="shadow-lg bg-off-white border-soft-olive-200">
           <CardHeader>
-            <CardTitle className="text-charcoal">Patient Registration</CardTitle>
+            <CardTitle className="text-charcoal">
+              Patient Registration
+            </CardTitle>
             <CardDescription className="text-muted-gold">
               Fill in your information to create your patient portal account
             </CardDescription>
@@ -147,40 +203,58 @@ export default function PatientRegister() {
             <form onSubmit={handleSubmit} className="space-y-6">
               {/* Personal Information */}
               <div className="space-y-4">
-                <h3 className="text-lg font-medium text-charcoal">Personal Information</h3>
-                
+                <h3 className="text-lg font-medium text-charcoal">
+                  Personal Information
+                </h3>
+
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-charcoal mb-1">
                       First Name *
-                      <span className="block text-xs text-muted-gold italic font-normal">Unang Pangalan</span>
+                      <span className="block text-xs text-muted-gold italic font-normal">
+                        Unang Pangalan
+                      </span>
                     </label>
                     <Input
                       name="firstName"
                       value={formData.firstName}
                       onChange={handleInputChange}
                       placeholder="Enter your first name"
-                      className={errors.firstName ? 'border-red-500' : 'border-soft-olive-300 focus:border-warm-pink'}
+                      className={
+                        errors.firstName
+                          ? "border-red-500"
+                          : "border-soft-olive-300 focus:border-warm-pink"
+                      }
                     />
                     {errors.firstName && (
-                      <p className="text-red-500 text-sm mt-1">{errors.firstName}</p>
+                      <p className="text-red-500 text-sm mt-1">
+                        {errors.firstName}
+                      </p>
                     )}
                   </div>
 
                   <div>
                     <label className="block text-sm font-medium text-charcoal mb-1">
                       Last Name *
-                      <span className="block text-xs text-muted-gold italic font-normal">Apelyido</span>
+                      <span className="block text-xs text-muted-gold italic font-normal">
+                        Apelyido
+                      </span>
                     </label>
                     <Input
                       name="lastName"
                       value={formData.lastName}
                       onChange={handleInputChange}
                       placeholder="Enter your last name"
-                      className={errors.lastName ? 'border-red-500' : 'border-soft-olive-300 focus:border-warm-pink'}
+                      className={
+                        errors.lastName
+                          ? "border-red-500"
+                          : "border-soft-olive-300 focus:border-warm-pink"
+                      }
                     />
                     {errors.lastName && (
-                      <p className="text-red-500 text-sm mt-1">{errors.lastName}</p>
+                      <p className="text-red-500 text-sm mt-1">
+                        {errors.lastName}
+                      </p>
                     )}
                   </div>
                 </div>
@@ -188,7 +262,9 @@ export default function PatientRegister() {
                 <div>
                   <label className="block text-sm font-medium text-charcoal mb-1">
                     Email Address *
-                    <span className="block text-xs text-muted-gold italic font-normal">Email Address (E-mail)</span>
+                    <span className="block text-xs text-muted-gold italic font-normal">
+                      Email Address (E-mail)
+                    </span>
                   </label>
                   <Input
                     type="email"
@@ -196,7 +272,11 @@ export default function PatientRegister() {
                     value={formData.email}
                     onChange={handleInputChange}
                     placeholder="Enter your email address"
-                    className={errors.email ? 'border-red-500' : 'border-soft-olive-300 focus:border-warm-pink'}
+                    className={
+                      errors.email
+                        ? "border-red-500"
+                        : "border-soft-olive-300 focus:border-warm-pink"
+                    }
                   />
                   {errors.email && (
                     <p className="text-red-500 text-sm mt-1">{errors.email}</p>
@@ -207,34 +287,50 @@ export default function PatientRegister() {
                   <div>
                     <label className="block text-sm font-medium text-charcoal mb-1">
                       Phone Number *
-                      <span className="block text-xs text-muted-gold italic font-normal">Numero ng Telepono</span>
+                      <span className="block text-xs text-muted-gold italic font-normal">
+                        Numero ng Telepono
+                      </span>
                     </label>
                     <Input
                       name="phoneNumber"
                       value={formData.phoneNumber}
                       onChange={handleInputChange}
                       placeholder="Enter your phone number"
-                      className={errors.phoneNumber ? 'border-red-500' : 'border-soft-olive-300 focus:border-warm-pink'}
+                      className={
+                        errors.phoneNumber
+                          ? "border-red-500"
+                          : "border-soft-olive-300 focus:border-warm-pink"
+                      }
                     />
                     {errors.phoneNumber && (
-                      <p className="text-red-500 text-sm mt-1">{errors.phoneNumber}</p>
+                      <p className="text-red-500 text-sm mt-1">
+                        {errors.phoneNumber}
+                      </p>
                     )}
                   </div>
 
                   <div>
                     <label className="block text-sm font-medium text-charcoal mb-1">
                       Date of Birth *
-                      <span className="block text-xs text-muted-gold italic font-normal">Araw ng Kapanganakan</span>
+                      <span className="block text-xs text-muted-gold italic font-normal">
+                        Araw ng Kapanganakan
+                      </span>
                     </label>
                     <Input
                       type="date"
                       name="dateOfBirth"
                       value={formData.dateOfBirth}
                       onChange={handleInputChange}
-                      className={errors.dateOfBirth ? 'border-red-500' : 'border-soft-olive-300 focus:border-warm-pink'}
+                      className={
+                        errors.dateOfBirth
+                          ? "border-red-500"
+                          : "border-soft-olive-300 focus:border-warm-pink"
+                      }
                     />
                     {errors.dateOfBirth && (
-                      <p className="text-red-500 text-sm mt-1">{errors.dateOfBirth}</p>
+                      <p className="text-red-500 text-sm mt-1">
+                        {errors.dateOfBirth}
+                      </p>
                     )}
                   </div>
                 </div>
@@ -242,14 +338,16 @@ export default function PatientRegister() {
                 <div>
                   <label className="block text-sm font-medium text-charcoal mb-1">
                     Gender *
-                    <span className="block text-xs text-muted-gold italic font-normal">Kasarian</span>
+                    <span className="block text-xs text-muted-gold italic font-normal">
+                      Kasarian
+                    </span>
                   </label>
                   <select
                     name="gender"
                     value={formData.gender}
                     onChange={handleInputChange}
                     className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-warm-pink focus:border-transparent ${
-                      errors.gender ? 'border-red-500' : 'border-soft-olive-300'
+                      errors.gender ? "border-red-500" : "border-soft-olive-300"
                     }`}
                   >
                     <option value="">Select gender</option>
@@ -265,12 +363,16 @@ export default function PatientRegister() {
 
               {/* Password */}
               <div className="space-y-4">
-                <h3 className="text-lg font-medium text-charcoal">Account Security</h3>
-                
+                <h3 className="text-lg font-medium text-charcoal">
+                  Account Security
+                </h3>
+
                 <div>
                   <label className="block text-sm font-medium text-charcoal mb-1">
                     Password *
-                    <span className="block text-xs text-muted-gold italic font-normal">Lihim na Salita</span>
+                    <span className="block text-xs text-muted-gold italic font-normal">
+                      Lihim na Salita
+                    </span>
                   </label>
                   <div className="relative">
                     <Input
@@ -279,25 +381,37 @@ export default function PatientRegister() {
                       value={formData.password}
                       onChange={handleInputChange}
                       placeholder="Create a password"
-                      className={errors.password ? 'border-red-500' : 'border-soft-olive-300 focus:border-warm-pink'}
+                      className={
+                        errors.password
+                          ? "border-red-500"
+                          : "border-soft-olive-300 focus:border-warm-pink"
+                      }
                     />
                     <button
                       type="button"
                       onClick={() => setShowPassword(!showPassword)}
                       className="absolute right-3 top-1/2 transform -translate-y-1/2 text-muted-gold hover:text-warm-pink"
                     >
-                      {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      {showPassword ? (
+                        <EyeOff className="h-4 w-4" />
+                      ) : (
+                        <Eye className="h-4 w-4" />
+                      )}
                     </button>
                   </div>
                   {errors.password && (
-                    <p className="text-red-500 text-sm mt-1">{errors.password}</p>
+                    <p className="text-red-500 text-sm mt-1">
+                      {errors.password}
+                    </p>
                   )}
                 </div>
 
                 <div>
                   <label className="block text-sm font-medium text-charcoal mb-1">
                     Confirm Password *
-                    <span className="block text-xs text-muted-gold italic font-normal">Kumpirmahin ang Lihim na Salita</span>
+                    <span className="block text-xs text-muted-gold italic font-normal">
+                      Kumpirmahin ang Lihim na Salita
+                    </span>
                   </label>
                   <div className="relative">
                     <Input
@@ -306,18 +420,30 @@ export default function PatientRegister() {
                       value={formData.confirmPassword}
                       onChange={handleInputChange}
                       placeholder="Confirm your password"
-                      className={errors.confirmPassword ? 'border-red-500' : 'border-soft-olive-300 focus:border-warm-pink'}
+                      className={
+                        errors.confirmPassword
+                          ? "border-red-500"
+                          : "border-soft-olive-300 focus:border-warm-pink"
+                      }
                     />
                     <button
                       type="button"
-                      onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                      onClick={() =>
+                        setShowConfirmPassword(!showConfirmPassword)
+                      }
                       className="absolute right-3 top-1/2 transform -translate-y-1/2 text-muted-gold hover:text-warm-pink"
                     >
-                      {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      {showConfirmPassword ? (
+                        <EyeOff className="h-4 w-4" />
+                      ) : (
+                        <Eye className="h-4 w-4" />
+                      )}
                     </button>
                   </div>
                   {errors.confirmPassword && (
-                    <p className="text-red-500 text-sm mt-1">{errors.confirmPassword}</p>
+                    <p className="text-red-500 text-sm mt-1">
+                      {errors.confirmPassword}
+                    </p>
                   )}
                 </div>
               </div>
@@ -328,26 +454,31 @@ export default function PatientRegister() {
                   <Checkbox
                     id="consent"
                     checked={formData.consent}
-                    onCheckedChange={(checked) => setFormData({ ...formData, consent: Boolean(checked) })}
+                    disabled={!consentAccepted}
+                    onCheckedChange={(checked) =>
+                      setFormData({ ...formData, consent: Boolean(checked) })
+                    }
                   />
                   <div className="grid gap-1.5 leading-none">
                     <label
                       htmlFor="consent"
                       className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 text-charcoal"
                     >
-                      I agree to the Terms of Service and Privacy Policy
+                      I agree to the{" "}
+                      <button
+                        type="button"
+                        onClick={() => setShowConsent(true)}
+                        className="text-warm-pink hover:underline"
+                      >
+                        Data Privacy Consent
+                      </button>
                     </label>
-                    <p className="text-sm text-muted-gold">
-                      By checking this box, you consent to our{' '}
-                      <Link to="/terms-of-service" className="text-warm-pink hover:underline">
-                        Terms of Service
-                      </Link>{' '}
-                      and{' '}
-                      <Link to="/privacy-policy" className="text-warm-pink hover:underline">
-                        Privacy Policy
-                      </Link>
-                      . You agree to the collection and use of your personal information as described in these documents.
-                    </p>
+                    {!consentAccepted && (
+                      <p className="text-xs text-gray-500">
+                        Please read the Data Privacy Consent to enable this
+                        checkbox.
+                      </p>
+                    )}
                   </div>
                 </div>
                 {errors.consent && (
@@ -368,7 +499,7 @@ export default function PatientRegister() {
                       Creating Account...
                     </>
                   ) : (
-                    'Create Account'
+                    "Create Account"
                   )}
                 </Button>
               </div>
@@ -376,8 +507,11 @@ export default function PatientRegister() {
               {/* Login Link */}
               <div className="text-center pt-4">
                 <p className="text-sm text-muted-gold">
-                  Already have an account?{' '}
-                  <Link to="/patient/login" className="text-warm-pink hover:text-warm-pink-700 font-medium">
+                  Already have an account?{" "}
+                  <Link
+                    to="/patient/login"
+                    className="text-warm-pink hover:text-warm-pink-700 font-medium"
+                  >
                     Sign in here
                   </Link>
                 </p>
@@ -386,6 +520,65 @@ export default function PatientRegister() {
           </CardContent>
         </Card>
       </div>
+      {/* Data Privacy Consent Modal */}
+      <Dialog open={showConsent} onOpenChange={setShowConsent}>
+        <DialogContent className="sm:max-w-[720px] max-h-[80vh]">
+          <DialogHeader>
+            <DialogTitle>Data Privacy Consent</DialogTitle>
+          </DialogHeader>
+          <div className="border p-6 rounded text-gray-700 leading-relaxed">
+            <p className="mb-4">
+              By participating in this patient portal system operated by VM
+              Mother and Child Clinic, I willingly provide my personal data,
+              understanding that the collection, processing and usage of such
+              data will adhere to the Data Privacy Act of 2012 in the
+              Philippines.
+            </p>
+            <p className="mb-4">
+              I grant explicit consent for VM Mother and Child Clinic to utilize
+              the provided data solely for medical care, appointment management,
+              and health record purposes, ensuring its confidentiality and
+              non-disclosure to third parties, nor any misuse thereof, except as
+              required by law.
+            </p>
+            <p className="mb-4">
+              I acknowledge my right to withdraw consent or request the deletion
+              of my data as provided under the Data Privacy Act. My agreement
+              signifies my informed consent, understanding, and compliance with
+              the aforementioned principles.
+            </p>
+            <div className="mt-6 p-4 bg-gray-50 rounded-lg">
+              <h4 className="font-semibold text-gray-900 mb-2">
+                Contact Information:
+              </h4>
+              <p className="text-sm">Phone: 0962 695 2050</p>
+              <p className="text-sm">Address: San Nicolas, Arayat, Pampanga</p>
+              <p className="text-xs text-gray-500">
+                (Beside "Buff. It Up Auto Spa and Detailing" and in front of
+                INC‑San Nicolas)
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowConsent(false)}>
+              Close
+            </Button>
+            <Button
+              onClick={() => {
+                setConsentAccepted(true);
+                setShowConsent(false);
+              }}
+              disabled={consentTimer < 3}
+            >
+              {consentTimer < 3
+                ? `Please wait ${3 - consentTimer} second${
+                    3 - consentTimer !== 1 ? "s" : ""
+                  }...`
+                : "I have read and understood"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
-} 
+}

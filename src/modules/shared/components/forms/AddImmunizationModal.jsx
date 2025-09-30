@@ -1,52 +1,52 @@
-import React, { useState } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
-import { Button } from '../ui/button';
-import { Input } from '../ui/input';
-import { LoadingSpinner } from '../ui/loading-spinner';
-import { X, Plus, Syringe } from 'lucide-react';
-import { patientsAPI } from '../../lib/api';
-import { toast } from '../ui/toast';
+import React, { useState } from "react";
+import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
+import { Button } from "../ui/button";
+import { Input } from "../ui/input";
+import { LoadingSpinner } from "../ui/loading-spinner";
+import { X, Plus, Syringe } from "lucide-react";
+import { patientsAPI } from "../../lib/api";
+import { toast } from "../ui/toaster";
 
 const AddImmunizationModal = ({ patientId, onClose, onSuccess }) => {
   const [formData, setFormData] = useState({
-    vaccine: '',
-    date: new Date().toISOString().split('T')[0],
-    remarks: ''
+    vaccine: "",
+    date: new Date().toISOString().split("T")[0],
+    remarks: "",
   });
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState("");
 
   const vaccineOptions = [
-    { value: 'BCG', label: 'BCG (Bacillus Calmette-Guérin)' },
-    { value: 'HEPATITIS_B', label: 'Hepatitis B' },
-    { value: 'DPT_1', label: 'DPT 1st Dose' },
-    { value: 'DPT_2', label: 'DPT 2nd Dose' },
-    { value: 'DPT_3', label: 'DPT 3rd Dose' },
-    { value: 'POLIO_1', label: 'Polio 1st Dose' },
-    { value: 'POLIO_2', label: 'Polio 2nd Dose' },
-    { value: 'POLIO_3', label: 'Polio 3rd Dose' },
-    { value: 'MMR', label: 'MMR (Measles, Mumps, Rubella)' },
-    { value: 'VARICELLA', label: 'Varicella (Chickenpox)' },
-    { value: 'PNEUMOCOCCAL', label: 'Pneumococcal' },
-    { value: 'ROTAVIRUS', label: 'Rotavirus' },
-    { value: 'INFLUENZA', label: 'Influenza' },
-    { value: 'OTHER', label: 'Other' }
+    { value: "BCG", label: "BCG (Bacillus Calmette-Guérin)" },
+    { value: "HEPATITIS_B", label: "Hepatitis B" },
+    { value: "DPT_1", label: "DPT 1st Dose" },
+    { value: "DPT_2", label: "DPT 2nd Dose" },
+    { value: "DPT_3", label: "DPT 3rd Dose" },
+    { value: "POLIO_1", label: "Polio 1st Dose" },
+    { value: "POLIO_2", label: "Polio 2nd Dose" },
+    { value: "POLIO_3", label: "Polio 3rd Dose" },
+    { value: "MMR", label: "MMR (Measles, Mumps, Rubella)" },
+    { value: "VARICELLA", label: "Varicella (Chickenpox)" },
+    { value: "PNEUMOCOCCAL", label: "Pneumococcal" },
+    { value: "ROTAVIRUS", label: "Rotavirus" },
+    { value: "INFLUENZA", label: "Influenza" },
+    { value: "OTHER", label: "Other" },
   ];
 
   const handleInputChange = (field, value) => {
-    setFormData(prev => ({
+    setFormData((prev) => ({
       ...prev,
-      [field]: value
+      [field]: value,
     }));
   };
 
   const validateForm = () => {
     if (!formData.vaccine) {
-      setError('Please select a vaccine.');
+      setError("Please select a vaccine.");
       return false;
     }
     if (!formData.date) {
-      setError('Please select a date.');
+      setError("Please select a date.");
       return false;
     }
     return true;
@@ -54,7 +54,7 @@ const AddImmunizationModal = ({ patientId, onClose, onSuccess }) => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setError('');
+    setError("");
 
     if (!validateForm()) return;
 
@@ -62,13 +62,13 @@ const AddImmunizationModal = ({ patientId, onClose, onSuccess }) => {
 
     try {
       await patientsAPI.addImmunization(patientId, formData);
-      
-      toast.success('Immunization record added successfully!');
+
+      toast.success("Immunization record added successfully!");
       onSuccess && onSuccess();
     } catch (error) {
-      console.error('Error adding immunization:', error);
-      setError('Failed to add immunization record. Please try again.');
-      toast.error('Failed to add immunization record');
+      console.error("Error adding immunization:", error);
+      setError("Failed to add immunization record. Please try again.");
+      toast.error("Failed to add immunization record");
     } finally {
       setLoading(false);
     }
@@ -87,7 +87,7 @@ const AddImmunizationModal = ({ patientId, onClose, onSuccess }) => {
               <X className="h-4 w-4" />
             </Button>
           </CardHeader>
-          
+
           <CardContent>
             {error && (
               <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
@@ -103,7 +103,7 @@ const AddImmunizationModal = ({ patientId, onClose, onSuccess }) => {
                 </label>
                 <select
                   value={formData.vaccine}
-                  onChange={(e) => handleInputChange('vaccine', e.target.value)}
+                  onChange={(e) => handleInputChange("vaccine", e.target.value)}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   required
                 >
@@ -124,7 +124,7 @@ const AddImmunizationModal = ({ patientId, onClose, onSuccess }) => {
                 <Input
                   type="date"
                   value={formData.date}
-                  onChange={(e) => handleInputChange('date', e.target.value)}
+                  onChange={(e) => handleInputChange("date", e.target.value)}
                   required
                 />
               </div>
@@ -136,7 +136,7 @@ const AddImmunizationModal = ({ patientId, onClose, onSuccess }) => {
                 </label>
                 <textarea
                   value={formData.remarks}
-                  onChange={(e) => handleInputChange('remarks', e.target.value)}
+                  onChange={(e) => handleInputChange("remarks", e.target.value)}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   rows={3}
                   placeholder="Any additional notes, reactions, or observations..."
@@ -148,8 +148,8 @@ const AddImmunizationModal = ({ patientId, onClose, onSuccess }) => {
                 <Button type="button" variant="outline" onClick={onClose}>
                   Cancel
                 </Button>
-                <Button 
-                  type="submit" 
+                <Button
+                  type="submit"
                   disabled={loading}
                   className="flex items-center space-x-2"
                 >
@@ -158,7 +158,7 @@ const AddImmunizationModal = ({ patientId, onClose, onSuccess }) => {
                   ) : (
                     <Plus className="h-4 w-4" />
                   )}
-                  <span>{loading ? 'Adding...' : 'Add Immunization'}</span>
+                  <span>{loading ? "Adding..." : "Add Immunization"}</span>
                 </Button>
               </div>
             </form>
@@ -169,4 +169,4 @@ const AddImmunizationModal = ({ patientId, onClose, onSuccess }) => {
   );
 };
 
-export default AddImmunizationModal; 
+export default AddImmunizationModal;

@@ -1,7 +1,7 @@
-import { create } from 'zustand';
-import { useEffect } from 'react';
-import { authAPI, handleAPIError, extractData } from '../lib/api';
-import { toast } from '../components/ui/toast';
+import { create } from "zustand";
+import { useEffect } from "react";
+import { authAPI, handleAPIError, extractData } from "../lib/api";
+import { toast } from "../components/ui/toaster";
 
 const useAuthStore = create((set, get) => ({
   user: null,
@@ -13,11 +13,11 @@ const useAuthStore = create((set, get) => ({
   initialize: async () => {
     const { initialized } = get();
     if (initialized) return;
-    
+
     set({ initialized: true });
-    
+
     try {
-      const token = localStorage.getItem('clinic_token');
+      const token = localStorage.getItem("clinic_token");
       if (!token) {
         set({ loading: false });
         return;
@@ -25,20 +25,20 @@ const useAuthStore = create((set, get) => ({
 
       const response = await authAPI.getProfile();
       const userData = extractData(response);
-      
-      set({ 
-        user: userData.user, 
-        loading: false, 
-        error: null 
+
+      set({
+        user: userData.user,
+        loading: false,
+        error: null,
       });
     } catch (error) {
-      console.error('Auth initialization error:', error);
-      localStorage.removeItem('clinic_token');
-      localStorage.removeItem('clinic_refresh_token');
-      set({ 
-        user: null, 
-        loading: false, 
-        error: handleAPIError(error) 
+      console.error("Auth initialization error:", error);
+      localStorage.removeItem("clinic_token");
+      localStorage.removeItem("clinic_refresh_token");
+      set({
+        user: null,
+        loading: false,
+        error: handleAPIError(error),
       });
     }
   },
@@ -47,31 +47,30 @@ const useAuthStore = create((set, get) => ({
   login: async (credentials) => {
     try {
       set({ loading: true, error: null });
-      
+
       const response = await authAPI.login(credentials);
       const data = extractData(response);
-      
+
       // Store tokens
-      localStorage.setItem('clinic_token', data.token);
+      localStorage.setItem("clinic_token", data.token);
       if (data.refreshToken) {
-        localStorage.setItem('clinic_refresh_token', data.refreshToken);
+        localStorage.setItem("clinic_refresh_token", data.refreshToken);
       }
-      
-      set({ 
-        user: data.user, 
-        loading: false, 
-        error: null 
+
+      set({
+        user: data.user,
+        loading: false,
+        error: null,
       });
-      
+
       toast.success(`Welcome back, ${data.user.firstName}!`);
       return { success: true };
-      
     } catch (error) {
       const errorMessage = handleAPIError(error);
-      set({ 
-        user: null, 
-        loading: false, 
-        error: errorMessage 
+      set({
+        user: null,
+        loading: false,
+        error: errorMessage,
       });
       toast.error(errorMessage);
       return { success: false, error: errorMessage };
@@ -83,17 +82,17 @@ const useAuthStore = create((set, get) => ({
     try {
       await authAPI.logout();
     } catch (error) {
-      console.error('Logout error:', error);
+      console.error("Logout error:", error);
     } finally {
-      localStorage.removeItem('clinic_token');
-      localStorage.removeItem('clinic_refresh_token');
-      set({ 
-        user: null, 
-        loading: false, 
+      localStorage.removeItem("clinic_token");
+      localStorage.removeItem("clinic_refresh_token");
+      set({
+        user: null,
+        loading: false,
         error: null,
-        initialized: false
+        initialized: false,
       });
-      toast.info('You have been logged out');
+      toast.info("You have been logged out");
     }
   },
 
@@ -101,7 +100,7 @@ const useAuthStore = create((set, get) => ({
   changePassword: async (passwordData) => {
     try {
       await authAPI.changePassword(passwordData);
-      toast.success('Password changed successfully');
+      toast.success("Password changed successfully");
       return { success: true };
     } catch (error) {
       const errorMessage = handleAPIError(error);
@@ -119,13 +118,13 @@ const useAuthStore = create((set, get) => ({
 
 export const useAuth = () => {
   const store = useAuthStore();
-  
+
   // Initialize on first use with useEffect to avoid setState during render
   useEffect(() => {
     if (!store.initialized) {
       store.initialize();
     }
   }, [store.initialized, store.initialize]);
-  
+
   return store;
-}; 
+};
