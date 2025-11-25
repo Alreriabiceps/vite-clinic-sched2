@@ -1,4 +1,4 @@
-import { Card, CardContent, CardDescription, CardHeader, CardTitle, Button, LoadingSpinner, usePatientAuth, patientBookingAPI, extractData, handleAPIError, toast, CancellationRequestModal, RescheduleRequestModal } from '../../shared';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, Button, buttonVariants, cn, LoadingSpinner, usePatientAuth, patientBookingAPI, extractData, handleAPIError, toast, CancellationRequestModal, RescheduleRequestModal } from '../../shared';
 import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { 
@@ -296,12 +296,13 @@ export default function PatientAppointments() {
                 </div>
               </div>
             </div>
-            <Button asChild className="bg-warm-pink hover:bg-warm-pink-600 text-white">
-              <Link to="/patient/book-appointment">
-                <Plus className="h-4 w-4 mr-2" />
-                Book New Appointment
-              </Link>
-            </Button>
+            <Link 
+              to="/patient/book-appointment" 
+              className={cn(buttonVariants(), "bg-warm-pink hover:bg-warm-pink-600 text-white")}
+            >
+              <Plus className="h-4 w-4 mr-2" />
+              Book New Appointment
+            </Link>
           </div>
         </div>
       </header>
@@ -466,12 +467,13 @@ export default function PatientAppointments() {
                 }
               </p>
               {filter === 'all' && (
-                <Button asChild>
-                  <Link to="/patient/book-appointment">
-                    <Plus className="h-4 w-4 mr-2" />
-                    Book Your First Appointment
-                  </Link>
-                </Button>
+                <Link 
+                  to="/patient/book-appointment" 
+                  className={buttonVariants()}
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  Book Your First Appointment
+                </Link>
               )}
             </CardContent>
           </Card>

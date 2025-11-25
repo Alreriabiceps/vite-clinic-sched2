@@ -1,4 +1,4 @@
-import { Card, CardContent, CardDescription, CardHeader, CardTitle, Button, LoadingSpinner, usePatientAuth, patientBookingAPI, extractData, handleAPIError, toast } from '../../shared';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, Button, buttonVariants, cn, LoadingSpinner, usePatientAuth, patientBookingAPI, extractData, handleAPIError, toast } from '../../shared';
 import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { 
@@ -235,7 +235,7 @@ export default function PatientDashboard() {
                         <div className="flex justify-between items-start mb-2">
                           <div>
                             <h4 className="font-medium text-charcoal">
-                              Dr. {appointment.doctor}
+                              {appointment.doctor?.startsWith('Dr.') ? appointment.doctor : `Dr. ${appointment.doctor}`}
                             </h4>
                             <p className="text-sm text-muted-gold">
                               {appointment.specialty}
@@ -267,9 +267,12 @@ export default function PatientDashboard() {
                       </div>
                     ))}
                     <div className="text-center pt-4">
-                      <Button asChild variant="outline" className="border-warm-pink text-warm-pink hover:bg-warm-pink hover:text-white">
-                        <Link to="/patient/appointments">View All Appointments</Link>
-                      </Button>
+                      <Link 
+                        to="/patient/appointments" 
+                        className={cn(buttonVariants({ variant: "outline" }), "border-warm-pink text-warm-pink hover:bg-warm-pink hover:text-white")}
+                      >
+                        View All Appointments
+                      </Link>
                     </div>
                   </div>
                 ) : (
@@ -277,9 +280,12 @@ export default function PatientDashboard() {
                     <Calendar className="h-12 w-12 text-soft-olive-300 mx-auto mb-4" />
                     <h3 className="text-lg font-medium text-charcoal mb-2">No upcoming appointments</h3>
                     <p className="text-muted-gold mb-4">Ready to schedule your next visit?</p>
-                    <Button asChild className="bg-warm-pink hover:bg-warm-pink-600 text-white">
-                      <Link to="/patient/book-appointment">Book Appointment</Link>
-                    </Button>
+                    <Link 
+                      to="/patient/book-appointment" 
+                      className={cn(buttonVariants(), "bg-warm-pink hover:bg-warm-pink-600 text-white")}
+                    >
+                      Book Appointment
+                    </Link>
                   </div>
                 )}
               </CardContent>
@@ -331,9 +337,12 @@ export default function PatientDashboard() {
                 )}
 
                 <div className="pt-4">
-                  <Button asChild variant="outline" size="sm" className="w-full border-warm-pink text-warm-pink hover:bg-warm-pink hover:text-white">
-                    <Link to="/patient/profile">Edit Profile</Link>
-                  </Button>
+                  <Link 
+                    to="/patient/profile" 
+                    className={cn(buttonVariants({ variant: "outline", size: "sm" }), "w-full border-warm-pink text-warm-pink hover:bg-warm-pink hover:text-white")}
+                  >
+                    Edit Profile
+                  </Link>
                 </div>
               </CardContent>
             </Card>

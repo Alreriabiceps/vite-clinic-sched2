@@ -532,7 +532,7 @@ export default function PatientBookAppointment() {
                           )}
                         </div>
                         <div className="flex-1">
-                          <h3 className="font-medium text-gray-900">Dr. {doctor.name}</h3>
+                          <h3 className="font-medium text-gray-900">{doctor.name?.startsWith('Dr.') ? doctor.name : `Dr. ${doctor.name}`}</h3>
                           <p className="text-sm text-gray-600">{doctor.specialty}</p>
                           <div className="mt-2">
                             {doctor.schedule && typeof doctor.schedule === 'object' ? 
@@ -578,7 +578,7 @@ export default function PatientBookAppointment() {
                   {availableDates.length > 0 && (
                     <div className="mb-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
                       <p className="text-sm text-blue-800 font-medium">
-                        📅 Available dates for Dr. {selectedDoctorInfo?.name}:
+                        📅 Available dates for {selectedDoctorInfo?.name?.startsWith('Dr.') ? selectedDoctorInfo.name : `Dr. ${selectedDoctorInfo?.name}`}:
                       </p>
                       <p className="text-sm text-blue-600 mt-1">
                         {availableDates.length} dates available in the next 3 months
@@ -685,7 +685,7 @@ export default function PatientBookAppointment() {
                 <div className="bg-gray-50 p-4 rounded-lg space-y-2">
                   <div className="flex justify-between">
                     <span className="text-gray-600">Doctor:</span>
-                    <span className="font-medium">Dr. {selectedDoctorInfo?.name}</span>
+                    <span className="font-medium">{selectedDoctorInfo?.name?.startsWith('Dr.') ? selectedDoctorInfo.name : `Dr. ${selectedDoctorInfo?.name}`}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-gray-600">Specialty:</span>

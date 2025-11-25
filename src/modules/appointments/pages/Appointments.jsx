@@ -223,6 +223,7 @@ const allDoctorNames = [
 export default function Appointments() {
   const [appointments, setAppointments] = useState([]);
   const [loading, setLoading] = useState(true);
+  const tableRef = useRef(null);
 
   // Add custom styles for calendar to handle multiple events better
   useEffect(() => {
@@ -298,6 +299,8 @@ export default function Appointments() {
     doctorName: allDoctorNames[0],
     appointmentDate: new Date().toISOString().split("T")[0],
     appointmentTime: "09:00 AM",
+    endTime: "",
+    estimatedWaitTime: "",
     serviceType: "",
     reasonForVisit: "",
   });
@@ -319,13 +322,78 @@ export default function Appointments() {
   const [selectedDateAppointments, setSelectedDateAppointments] = useState([]);
   const [selectedModalDate, setSelectedModalDate] = useState(null);
 
+  // Table column resizing
+  const [columnWidths, setColumnWidths] = useState({
+    0: 80, 1: 100, 2: 180, 3: 200, 4: 180, 5: 90, 6: 100, 7: 110, 8: 140
+  });
+  const [isResizing, setIsResizing] = useState(false);
+  const [resizeColumn, setResizeColumn] = useState(null);
+
+  const handleResize = (e, columnIndex) => {
+    e.preventDefault();
+    setIsResizing(true);
+    setResizeColumn(columnIndex);
+    const startX = e.pageX;
+    const startWidth = columnWidths[columnIndex];
+
+    const handleMouseMove = (e) => {
+      const diff = e.pageX - startX;
+      const newWidth = Math.max(60, startWidth + diff);
+      setColumnWidths(prev => ({
+        ...prev,
+        [columnIndex]: newWidth
+      }));
+    };
+
+    const handleMouseUp = () => {
+      setIsResizing(false);
+      setResizeColumn(null);
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+  };
+
+  // Helper function to add 30 minutes to a time string
+  const add30Minutes = (timeString) => {
+    // Parse time string like "01:00 PM" or "09:30 AM"
+    const [time, period] = timeString.split(' ');
+    const [hours, minutes] = time.split(':').map(Number);
+    
+    let totalMinutes = hours * 60 + minutes;
+    if (period === 'PM' && hours !== 12) totalMinutes += 12 * 60;
+    if (period === 'AM' && hours === 12) totalMinutes -= 12 * 60;
+    
+    // Add 30 minutes
+    totalMinutes += 30;
+    
+    // Convert back to 12-hour format
+    let newHours = Math.floor(totalMinutes / 60);
+    const newMinutes = totalMinutes % 60;
+    
+    let newPeriod = 'AM';
+    if (newHours >= 12) {
+      newPeriod = 'PM';
+      if (newHours > 12) newHours -= 12;
+    }
+    if (newHours === 0) newHours = 12;
+    
+    return `${newHours}:${String(newMinutes).padStart(2, '0')} ${newPeriod}`;
+  };
+
   const timeSlots = [
+    "08:00 AM",
+    "08:30 AM",
     "09:00 AM",
     "09:30 AM",
     "10:00 AM",
     "10:30 AM",
     "11:00 AM",
     "11:30 AM",
+    "12:00 PM",
+    "12:30 PM",
     "01:00 PM",
     "01:30 PM",
     "02:00 PM",
@@ -621,6 +689,18 @@ export default function Appointments() {
     });
   };
 
+  const parseAppointmentDateTime = (appointment) => {
+    const date = new Date(appointment.appointmentDate);
+    if (appointment.appointmentTime) {
+      const [time, period] = appointment.appointmentTime.split(" ");
+      const [rawHour, rawMinute] = time.split(":").map(Number);
+      let hours = rawHour % 12;
+      if (period === "PM") hours += 12;
+      date.setHours(hours, rawMinute || 0, 0, 0);
+    }
+    return date.getTime();
+  };
+
   const getBookingSource = (appointment) => {
     return appointment.bookingSource === "patient_portal"
       ? "Patient Portal"
@@ -673,20 +753,27 @@ export default function Appointments() {
     return searchMatch && doctorMatch && matchesStatus && matchesDateRange;
   });
 
+  const sortedAppointments = [...visibleAppointments].sort(
+    (a, b) => parseAppointmentDateTime(b) - parseAppointmentDateTime(a)
+  );
+
   // Debug logging
   console.log("Filtering results:", {
     totalAppointments: appointments.length,
-    visibleAppointments: visibleAppointments.length,
+    visibleAppointments: sortedAppointments.length,
     statusFilter,
     dateRange,
     doctorFilter,
   });
 
   // Pagination logic
-  const totalPages = Math.ceil(visibleAppointments.length / itemsPerPage);
+  const totalPages = Math.ceil(sortedAppointments.length / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
   const endIndex = startIndex + itemsPerPage;
-  const paginatedAppointments = visibleAppointments.slice(startIndex, endIndex);
+  const paginatedAppointments = sortedAppointments.slice(
+    startIndex,
+    endIndex
+  );
 
   // Group appointments by doctor for the list view
   const appointmentsByDoctor = paginatedAppointments.reduce(
@@ -931,7 +1018,14 @@ export default function Appointments() {
 
   const handleNewAppointmentChange = (e) => {
     const { name, value } = e.target;
-    setNewAppointment((prev) => ({ ...prev, [name]: value }));
+    setNewAppointment((prev) => {
+      const updated = { ...prev, [name]: value };
+      // Auto-calculate end time when appointment time changes
+      if (name === 'appointmentTime' && value) {
+        updated.endTime = add30Minutes(value);
+      }
+      return updated;
+    });
   };
 
   const handlePatientSearch = (e) => {
@@ -1010,6 +1104,8 @@ export default function Appointments() {
         doctorName: newAppointment.doctorName,
         appointmentDate: newAppointment.appointmentDate,
         appointmentTime: newAppointment.appointmentTime,
+        endTime: newAppointment.endTime || undefined,
+        estimatedWaitTime: newAppointment.estimatedWaitTime ? parseInt(newAppointment.estimatedWaitTime) : undefined,
         serviceType: newAppointment.serviceType,
         contactInfo: { primaryPhone: newAppointment.contactNumber },
         patientName: newAppointment.patientName.trim(),
@@ -1027,6 +1123,8 @@ export default function Appointments() {
         doctorName: allDoctorNames[0],
         appointmentDate: new Date().toISOString().split("T")[0],
         appointmentTime: "09:00 AM",
+        endTime: "",
+        estimatedWaitTime: "",
         serviceType: "",
         reasonForVisit: "",
       });
@@ -1572,35 +1670,89 @@ export default function Appointments() {
           {viewMode === "table" && (
             <Card className="bg-white border-soft-olive-200">
               <CardContent className="p-0 overflow-auto">
-                <table className="min-w-full text-sm">
-                  <thead className="bg-gray-50 text-charcoal">
-                    <tr>
-                      <th className="px-3 py-2 text-left">Time</th>
-                      <th className="px-3 py-2 text-left">Date</th>
-                      <th className="px-3 py-2 text-left">Patient</th>
-                      <th className="px-3 py-2 text-left">Doctor</th>
-                      <th className="px-3 py-2 text-left">Service</th>
-                      <th className="px-3 py-2 text-left">Status</th>
-                      <th className="px-3 py-2 text-left">Actions</th>
-                    </tr>
-                  </thead>
+                <div className="overflow-x-auto">
+                  <table ref={tableRef} className="min-w-full text-sm border-collapse">
+                    <colgroup>
+                      <col style={{ width: `${columnWidths[0]}px`, minWidth: '60px' }} />
+                      <col style={{ width: `${columnWidths[1]}px`, minWidth: '80px' }} />
+                      <col style={{ width: `${columnWidths[2]}px`, minWidth: '120px' }} />
+                      <col style={{ width: `${columnWidths[3]}px`, minWidth: '150px' }} />
+                      <col style={{ width: `${columnWidths[4]}px`, minWidth: '120px' }} />
+                      <col style={{ width: `${columnWidths[5]}px`, minWidth: '70px' }} />
+                      <col style={{ width: `${columnWidths[6]}px`, minWidth: '80px' }} />
+                      <col style={{ width: `${columnWidths[7]}px`, minWidth: '90px' }} />
+                      <col style={{ width: `${columnWidths[8]}px`, minWidth: '120px' }} />
+                    </colgroup>
+                    <thead className="bg-gray-50 text-charcoal">
+                      <tr>
+                        <th className="px-1 py-2 text-left relative group">
+                          <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-blue-300 group-hover:bg-blue-200 transition-colors" 
+                               onMouseDown={(e) => handleResize(e, 0)}></div>
+                          Time
+                        </th>
+                        <th className="px-1 py-2 text-left relative group">
+                          <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-blue-300 group-hover:bg-blue-200 transition-colors" 
+                               onMouseDown={(e) => handleResize(e, 1)}></div>
+                          Date
+                        </th>
+                        <th className="px-1 py-2 text-left relative group">
+                          <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-blue-300 group-hover:bg-blue-200 transition-colors" 
+                               onMouseDown={(e) => handleResize(e, 2)}></div>
+                          Patient
+                        </th>
+                        <th className="px-1 py-2 text-left relative group">
+                          <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-blue-300 group-hover:bg-blue-200 transition-colors" 
+                               onMouseDown={(e) => handleResize(e, 3)}></div>
+                          Doctor
+                        </th>
+                        <th className="px-1 py-2 text-left relative group">
+                          <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-blue-300 group-hover:bg-blue-200 transition-colors" 
+                               onMouseDown={(e) => handleResize(e, 4)}></div>
+                          Service
+                        </th>
+                        <th className="px-1 py-2 text-left relative group">
+                          <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-blue-300 group-hover:bg-blue-200 transition-colors" 
+                               onMouseDown={(e) => handleResize(e, 5)}></div>
+                          End Time
+                        </th>
+                        <th className="px-1 py-2 text-left relative group">
+                          <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-blue-300 group-hover:bg-blue-200 transition-colors" 
+                               onMouseDown={(e) => handleResize(e, 6)}></div>
+                          Wait Time
+                        </th>
+                        <th className="px-1 py-2 text-left relative group">
+                          <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-blue-300 group-hover:bg-blue-200 transition-colors" 
+                               onMouseDown={(e) => handleResize(e, 7)}></div>
+                          Status
+                        </th>
+                        <th className="px-1 py-2 text-left relative">
+                          Actions
+                        </th>
+                      </tr>
+                    </thead>
                   <tbody className="divide-y">
-                    {visibleAppointments.map((a) => (
+                    {paginatedAppointments.map((a) => (
                       <tr key={a._id} className="hover:bg-gray-50">
-                        <td className="px-3 py-2 font-medium">
+                        <td className="px-1 py-2 font-medium border-r border-gray-100">
                           {formatTime(a.appointmentTime)}
                         </td>
-                        <td className="px-3 py-2">
+                        <td className="px-1 py-2 border-r border-gray-100">
                           {formatDate(a.appointmentDate)}
                         </td>
-                        <td className="px-3 py-2 truncate max-w-[200px]">
+                        <td className="px-1 py-2 truncate border-r border-gray-100">
                           {getPatientName(a)}
                         </td>
-                        <td className="px-3 py-2">{a.doctorName}</td>
-                        <td className="px-3 py-2 truncate max-w-[220px]">
+                        <td className="px-1 py-2 truncate border-r border-gray-100">{a.doctorName}</td>
+                        <td className="px-1 py-2 truncate border-r border-gray-100">
                           {a.serviceType.replace(/_/g, " ")}
                         </td>
-                        <td className="px-3 py-2">
+                        <td className="px-1 py-2 border-r border-gray-100">
+                          {a.endTime ? formatTime(a.endTime) : (a.appointmentTime ? formatTime(add30Minutes(a.appointmentTime)) : '—')}
+                        </td>
+                        <td className="px-1 py-2 border-r border-gray-100">
+                          {a.estimatedWaitTime ? `${a.estimatedWaitTime} min` : '—'}
+                        </td>
+                        <td className="px-1 py-2 border-r border-gray-100">
                           <span
                             className={`px-2 py-0.5 rounded-full text-xs ${getStatusBadgeClass(
                               a.status
@@ -1610,8 +1762,8 @@ export default function Appointments() {
                               a.status.slice(1)}
                           </span>
                         </td>
-                        <td className="px-3 py-2">
-                          <div className="flex gap-2">
+                        <td className="px-1 py-2">
+                          <div className="flex gap-1.5">
                             {a.status === "scheduled" && (
                               <Button
                                 size="sm"
@@ -1658,6 +1810,7 @@ export default function Appointments() {
                     ))}
                   </tbody>
                 </table>
+                </div>
               </CardContent>
             </Card>
           )}
@@ -1874,7 +2027,7 @@ export default function Appointments() {
                 </CardDescription>
               </CardHeader>
               <CardContent className="p-4">
-                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
                   <div className="text-center bg-white p-4 rounded-lg shadow-sm border border-soft-olive-200">
                     <div className="w-12 h-12 bg-soft-olive-100 rounded-full flex items-center justify-center mx-auto mb-2">
                       <Clock className="h-6 w-6 text-soft-olive-600" />
@@ -2050,7 +2203,7 @@ export default function Appointments() {
               </div>
             </DialogHeader>
 
-            <div className="grid grid-cols-3 gap-x-4 gap-y-3 py-4 text-sm">
+            <div className="grid grid-cols-3 gap-x-2 gap-y-3 py-4 text-sm">
               <div className="col-span-1 font-semibold text-gray-500">
                 Patient
               </div>
@@ -2086,6 +2239,14 @@ export default function Appointments() {
                   "EEE, MMM d, yyyy"
                 )}{" "}
                 at {selectedAppointment.appointmentTime}
+                {selectedAppointment.endTime || selectedAppointment.appointmentTime ? (
+                  <span className="text-gray-500">
+                    {" - "}
+                    {selectedAppointment.endTime 
+                      ? formatTime(selectedAppointment.endTime)
+                      : formatTime(add30Minutes(selectedAppointment.appointmentTime))}
+                  </span>
+                ) : null}
               </div>
 
               {selectedAppointment.reasonForVisit && (
@@ -2392,6 +2553,31 @@ export default function Appointments() {
               </select>
             </div>
             <div>
+              <label className="block text-xs font-medium mb-1">End Time (auto-calculated)</label>
+              <input
+                type="text"
+                name="endTime"
+                value={newAppointment.endTime}
+                onChange={handleNewAppointmentChange}
+                className="w-full p-2 border border-gray-300 rounded-md bg-gray-50"
+                placeholder="Auto-filled when start time is selected"
+                readOnly
+              />
+              <p className="text-xs text-gray-500 mt-1">Automatically set to 30 minutes after start time</p>
+            </div>
+            <div>
+              <label className="block text-xs font-medium mb-1">Waiting Time (minutes)</label>
+              <input
+                type="number"
+                name="estimatedWaitTime"
+                value={newAppointment.estimatedWaitTime}
+                onChange={handleNewAppointmentChange}
+                min="0"
+                className="w-full p-2 border border-gray-300 rounded-md"
+                placeholder="e.g., 15"
+              />
+            </div>
+            <div>
               <label className="block text-xs font-medium mb-1">
                 Service Type *
               </label>
@@ -2671,7 +2857,7 @@ export default function Appointments() {
                       </div>
 
                       <div className="border-t border-gray-100 pt-2 mt-2">
-                        <div className="grid grid-cols-2 gap-4 text-sm">
+                        <div className="grid grid-cols-2 gap-2 text-sm">
                           <div>
                             <span className="font-medium text-gray-700">
                               Doctor:

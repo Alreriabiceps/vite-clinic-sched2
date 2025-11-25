@@ -45,9 +45,15 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
-      localStorage.removeItem('clinic_token');
-      localStorage.removeItem('clinic_refresh_token');
-      window.location.href = '/login';
+      // Don't redirect if we're already on the login page or if it's a login request
+      const isLoginRequest = error.config?.url?.includes('/auth/login');
+      const isOnLoginPage = window.location.pathname === '/login';
+      
+      if (!isLoginRequest && !isOnLoginPage) {
+        localStorage.removeItem('clinic_token');
+        localStorage.removeItem('clinic_refresh_token');
+        window.location.href = '/login';
+      }
     }
     return Promise.reject(error);
   }
@@ -80,9 +86,15 @@ patientApi.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
-      localStorage.removeItem('patient_token');
-      localStorage.removeItem('patient_refresh_token');
-      window.location.href = '/patient/login';
+      // Don't redirect if we're already on the login page or if it's a login request
+      const isLoginRequest = error.config?.url?.includes('/patient/auth/login');
+      const isOnLoginPage = window.location.pathname === '/patient/login';
+      
+      if (!isLoginRequest && !isOnLoginPage) {
+        localStorage.removeItem('patient_token');
+        localStorage.removeItem('patient_refresh_token');
+        window.location.href = '/patient/login';
+      }
     }
     return Promise.reject(error);
   }
@@ -149,13 +161,21 @@ export const availabilityAPI = {
 
 // Helper function to handle API errors
 export const handleAPIError = (error) => {
-  if (error.response?.data?.message) {
-    return error.response.data.message;
-  } else if (error.message) {
-    return error.message;
-  } else {
-    return 'An unexpected error occurred';
+  if (error.response?.data) {
+    const data = error.response.data;
+    // If there are validation errors, show them
+    if (data.errors && Array.isArray(data.errors) && data.errors.length > 0) {
+      return data.errors.map(err => err.msg || err.message || JSON.stringify(err)).join(', ');
+    }
+    // Otherwise show the message
+    if (data.message) {
+      return data.message;
+    }
   }
+  if (error.message) {
+    return error.message;
+  }
+  return 'An unexpected error occurred';
 };
 
 // Patient Portal API

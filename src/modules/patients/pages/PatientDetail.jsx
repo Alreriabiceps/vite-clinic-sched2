@@ -613,7 +613,7 @@ const PatientDetail = () => {
                         </div>
 
                         <p className="text-sm text-gray-600">
-                          Dr. {appointment.doctorName} •{" "}
+                          {appointment.doctorName?.startsWith('Dr.') ? appointment.doctorName : `Dr. ${appointment.doctorName}`} •{" "}
                           {formatDate(appointment.appointmentDate)} at{" "}
                           {appointment.appointmentTime}
                         </p>

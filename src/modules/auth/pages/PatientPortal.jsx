@@ -1,4 +1,4 @@
-import { Card, CardContent, CardDescription, CardHeader, CardTitle, Button } from '../../shared';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, Button, buttonVariants, cn } from '../../shared';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Heart, Stethoscope, Baby, Calendar, Clock, Shield, Phone, MapPin } from 'lucide-react';
@@ -28,12 +28,18 @@ export default function PatientPortal() {
               </div>
             </div>
             <div className="flex gap-3">
-              <Button asChild variant="outline" className="border-warm-pink text-warm-pink hover:bg-warm-pink hover:text-white">
-                <Link to="/patient/login">Login</Link>
-              </Button>
-              <Button asChild className="bg-warm-pink hover:bg-warm-pink-600 text-white">
-                <Link to="/patient/register">Register</Link>
-              </Button>
+              <Link 
+                to="/patient/login" 
+                className={cn(buttonVariants({ variant: "outline" }), "border-warm-pink text-warm-pink hover:bg-warm-pink hover:text-white")}
+              >
+                Login
+              </Link>
+              <Link 
+                to="/patient/register" 
+                className={cn(buttonVariants(), "bg-warm-pink hover:bg-warm-pink-600 text-white")}
+              >
+                Register
+              </Link>
             </div>
           </div>
         </div>
@@ -154,12 +160,18 @@ export default function PatientPortal() {
               Create your account today and start booking appointments online.
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              <Button asChild size="lg" variant="outline" className="bg-white text-warm-pink border-white hover:bg-off-white">
-                <Link to="/patient/register">Create Account</Link>
-              </Button>
-              <Button asChild size="lg" variant="ghost" className="text-white border-white hover:bg-white hover:text-warm-pink">
-                <Link to="/patient/login">Sign In</Link>
-              </Button>
+              <Link 
+                to="/patient/register" 
+                className={cn(buttonVariants({ size: "lg", variant: "outline" }), "bg-white text-warm-pink border-white hover:bg-off-white")}
+              >
+                Create Account
+              </Link>
+              <Link 
+                to="/patient/login" 
+                className={cn(buttonVariants({ size: "lg", variant: "ghost" }), "text-white border-white hover:bg-white hover:text-warm-pink")}
+              >
+                Sign In
+              </Link>
             </div>
           </CardContent>
         </Card>

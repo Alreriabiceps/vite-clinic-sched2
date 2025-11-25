@@ -528,24 +528,25 @@ export default function PatientRegister() {
           </DialogHeader>
           <div className="border p-6 rounded text-gray-700 leading-relaxed">
             <p className="mb-4">
-              By participating in this patient portal system operated by VM
-              Mother and Child Clinic, I willingly provide my personal data,
-              understanding that the collection, processing and usage of such
-              data will adhere to the Data Privacy Act of 2012 in the
-              Philippines.
+              Sa pag-participate ko sa patient portal system na pinapatakbo ng
+              VM Mother and Child Clinic, kusa kong ibinibigay ang personal data
+              ko, alam kong ang pagkolekta, pagproseso, at paggamit nito ay
+              susunod sa Data Privacy Act of 2012 sa Pilipinas.
             </p>
             <p className="mb-4">
-              I grant explicit consent for VM Mother and Child Clinic to utilize
-              the provided data solely for medical care, appointment management,
-              and health record purposes, ensuring its confidentiality and
-              non-disclosure to third parties, nor any misuse thereof, except as
-              required by law.
+              Ibinibigay ko ang malinaw na consent na gamitin ng VM Mother and
+              Child Clinic ang data ko para lang sa medical care, appointment
+              management, at health record purposes, tinitiyak na mananatiling
+              confidential ito at hindi ise-share sa third parties o aabusuhin,
+              maliban kung hinihingi ng batas.
             </p>
             <p className="mb-4">
-              I acknowledge my right to withdraw consent or request the deletion
-              of my data as provided under the Data Privacy Act. My agreement
-              signifies my informed consent, understanding, and compliance with
-              the aforementioned principles.
+              Alam ko rin na may karapatan akong bawiin ang consent o
+              mag-request na burahin ang data ko ayon sa Data Privacy Act. Ang
+              pagpayag ko ay tanda ng informed consent, pag-unawa, at pagsunod
+              ko sa mga prinsipyong ito, at klaro sa akin na puwede akong
+              umatras o magpa-delete ng data anumang oras basta naaayon sa
+              batas.
             </p>
             <div className="mt-6 p-4 bg-gray-50 rounded-lg">
               <h4 className="font-semibold text-gray-900 mb-2">

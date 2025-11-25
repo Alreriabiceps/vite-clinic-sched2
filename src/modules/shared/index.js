@@ -16,7 +16,7 @@ export { default as DeleteConfirmationModal } from "./components/forms/DeleteCon
 export { default as RescheduleRequestModal } from "./components/forms/RescheduleRequestModal";
 
 // UI Components
-export { Button } from "./components/ui/button";
+export { Button, buttonVariants } from "./components/ui/button";
 export {
   Card,
   CardContent,
