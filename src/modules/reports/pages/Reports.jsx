@@ -1,297 +1,462 @@
-import { Card, CardContent, CardHeader, CardTitle, Button, LoadingSpinner, reportsAPI, formatDate, getStatusColor } from '../../shared';
-import React, { useState, useEffect } from 'react';
+import { Card, CardContent, CardHeader, CardTitle, Button, LoadingSpinner, appointmentsAPI, extractData } from '../../shared';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Printer, Filter, Users, Globe, UserPlus, TrendingUp } from 'lucide-react';
+
+const allDoctorNames = [
+  "Dr. Maria Sarah L. Manaloto",
+  "Dr. Shara Laine S. Vino",
+];
+
 const Reports = () => {
   const [loading, setLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState('daily');
-  const [reportData, setReportData] = useState(null);
-  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
-  const [selectedDoctor, setSelectedDoctor] = useState('');
+  const [allAppointments, setAllAppointments] = useState([]);
+  const [selectedDoctors, setSelectedDoctors] = useState(allDoctorNames); // Default to both doctors
 
-  const doctors = [
-    'Dr. Maria Sarah L. Manaloto',
-    'Dr. Shara Laine S. Vino'
-  ];
-
-  const fetchReport = async (type) => {
+  const fetchAllAppointments = async () => {
     setLoading(true);
     try {
-      let response;
-      const params = {
-        date: selectedDate,
-        doctorName: selectedDoctor || undefined
-      };
-
-      switch (type) {
-        case 'daily':
-          response = await reportsAPI.getDailyReport(params);
-          break;
-        case 'weekly':
-          response = await reportsAPI.getWeeklyReport({ 
-            startDate: selectedDate, 
-            doctorName: selectedDoctor || undefined 
-          });
-          break;
-        case 'monthly':
-          response = await reportsAPI.getMonthlyReport({ 
-            month: selectedDate.substring(0, 7), 
-            doctorName: selectedDoctor || undefined 
-          });
-          break;
-        case 'dashboard':
-          response = await reportsAPI.getDashboardAnalytics();
-          break;
-        default:
-          break;
-      }
-      
-      setReportData(response.data.data);
+      // Fetch all appointments with a high limit
+      const response = await appointmentsAPI.getAll({ limit: 10000 });
+      const data = extractData(response);
+      const appointments = data.appointments || data || [];
+      console.log('Fetched appointments for reports:', appointments.length);
+      setAllAppointments(appointments);
     } catch (error) {
-      console.error(`Error fetching ${type} report:`, error);
-      setReportData(null);
+      console.error('Error fetching appointments:', error);
+      setAllAppointments([]);
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchReport(activeTab);
-  }, [activeTab, selectedDate, selectedDoctor]);
+    fetchAllAppointments();
+  }, []);
 
-  const StatCard = ({ title, value, subtitle, color = "blue" }) => (
-    <Card>
-      <CardContent className="p-6">
-        <div className="flex items-center">
-          <div>
-            <p className="text-sm font-medium text-gray-600">{title}</p>
-            <p className={`text-2xl font-bold text-${color}-600`}>{value}</p>
-            {subtitle && <p className="text-xs text-gray-500">{subtitle}</p>}
+  // Calculate analytics
+  const analytics = useMemo(() => {
+    const total = allAppointments.length;
+    
+    // Walk-in appointments: booked by staff (has bookedBy or bookingSource is "staff")
+    const walkIns = allAppointments.filter(a => 
+      a.bookingSource === "staff" || 
+      (a.bookedBy && !a.patientUserId) ||
+      (!a.bookingSource && a.bookedBy)
+    );
+    
+    // Online appointments: booked through patient portal (has patientUserId or bookingSource is "patient_portal")
+    const online = allAppointments.filter(a => 
+      a.bookingSource === "patient_portal" || 
+      (a.patientUserId && !a.bookedBy) ||
+      (a.patientUserId && a.bookingSource !== "staff")
+    );
+    
+    // Calculate percentages
+    const walkInPercentage = total > 0 ? Math.round((walkIns.length / total) * 100) : 0;
+    const onlinePercentage = total > 0 ? Math.round((online.length / total) * 100) : 0;
+
+    return {
+      total,
+      walkIns: walkIns.length,
+      online: online.length,
+      walkInPercentage,
+      onlinePercentage,
+    };
+  }, [allAppointments]);
+
+  const getPatientName = (appointment) => {
+    if (appointment.patientName) return appointment.patientName;
+    if (appointment.patient?.obGyneRecord?.patientName) {
+      return appointment.patient.obGyneRecord.patientName;
+    }
+    if (appointment.patient?.pediatricRecord?.nameOfChildren) {
+      return appointment.patient.pediatricRecord.nameOfChildren;
+    }
+    return 'Unknown Patient';
+  };
+
+  const printHtml = (html) => {
+    const w = window.open("", "_blank");
+    if (!w) return;
+    w.document.open();
+    w.document.write(html);
+    w.document.close();
+    w.focus();
+    w.print();
+  };
+
+
+  const buildPrintHtml = (rangeLabel, groupedByDoctor) => {
+    const styles = `
+      <style>
+        body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; padding: 16px; color: #111827; }
+        h1 { font-size: 18px; margin: 0 0 12px; }
+        h2 { font-size: 16px; margin: 16px 0 8px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+        th, td { border: 1px solid #e5e7eb; padding: 6px 8px; font-size: 12px; }
+        th { background: #f9fafb; text-align: left; }
+        .muted { color: #6b7280; }
+        .summary { margin-top: 6px; font-size: 12px; }
+        .no-show { color: #7c3aed; font-weight: 600; }
+      </style>`;
+
+    const sections = Object.entries(groupedByDoctor)
+      .map(([doctor, rows]) => {
+        const noShows = rows.filter(
+          (r) => (r.status || "").toLowerCase() === "no-show"
+        );
+        const noShowNames = noShows.map(
+          (r) => r.patientName || r._patientName || ""
+        );
+        return `
+        <section>
+          <h2>${doctor}</h2>
+          <div class="summary">
+            Total: ${rows.length} &nbsp; • &nbsp;
+            <span class="no-show">No-show: ${noShows.length}${
+          noShows.length > 0 ? ` (${noShowNames.join(", ")})` : ""
+        }</span>
           </div>
-        </div>
-      </CardContent>
-    </Card>
-  );
+          <table>
+            <thead>
+              <tr>
+                <th>Time</th>
+                <th>Date</th>
+                <th>Patient</th>
+                <th>Service</th>
+                <th>Status</th>
+                <th>Phone</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${rows
+                .map(
+                  (r) => {
+                    // Format date correctly to avoid timezone issues
+                    let formattedDate = "";
+                    if (r.appointmentDate) {
+                      if (r.appointmentDate instanceof Date) {
+                        const year = r.appointmentDate.getFullYear();
+                        const month = r.appointmentDate.getMonth();
+                        const day = r.appointmentDate.getDate();
+                        formattedDate = new Date(year, month, day).toLocaleDateString();
+                      } else if (typeof r.appointmentDate === "string") {
+                        const datePart = r.appointmentDate.split("T")[0];
+                        const [year, month, day] = datePart.split("-");
+                        formattedDate = new Date(parseInt(year), parseInt(month) - 1, parseInt(day)).toLocaleDateString();
+                      } else {
+                        formattedDate = new Date(r.appointmentDate).toLocaleDateString();
+                      }
+                    }
+                    return `
+                <tr>
+                  <td>${r.appointmentTime || ""}</td>
+                  <td>${formattedDate}</td>
+                  <td>${r.patientName || r._patientName || ""}</td>
+                  <td>${(r.serviceType || "").replace(/_/g, " ")}</td>
+                  <td>${r.status || ""}</td>
+                  <td>${
+                    (r.contactInfo && r.contactInfo.primaryPhone) ||
+                    r.contactNumber ||
+                    ""
+                  }</td>
+                </tr>
+              `;
+                  }
+                )
+                .join("")}
+            </tbody>
+          </table>
+        </section>`;
+      })
+      .join("");
 
-  const renderDailyReport = () => {
-    if (!reportData) return null;
-
-    return (
-      <div className="space-y-6">
-        {/* Summary Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <StatCard title="Total Appointments" value={reportData.statistics?.total || 0} />
-          <StatCard title="Completed" value={reportData.statistics?.completed || 0} color="green" />
-          <StatCard title="Cancelled" value={reportData.statistics?.cancelled || 0} color="red" />
-          <StatCard title="Pediatric" value={reportData.statistics?.pediatric || 0} color="purple" />
-        </div>
-
-        {/* Doctor Breakdown */}
-        {reportData.statistics?.doctorBreakdown && (
-          <Card>
-            <CardHeader>
-              <CardTitle>Doctor Breakdown</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-2">
-                {Object.entries(reportData.statistics.doctorBreakdown).map(([doctor, count]) => (
-                  <div key={doctor} className="flex justify-between items-center py-2 border-b">
-                    <span className="font-medium">{doctor}</span>
-                    <span className="text-blue-600 font-semibold">{count} appointments</span>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Appointments List */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Appointments for {formatDate(reportData.date)}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {reportData.appointments?.length > 0 ? (
-              <div className="space-y-2">
-                {reportData.appointments.map((appointment) => (
-                  <div key={appointment._id} className="flex justify-between items-center p-3 border rounded-lg">
-                    <div>
-                      <p className="font-medium">
-                        {appointment.patient?.pediatricRecord?.nameOfChildren || 
-                         appointment.patient?.obGyneRecord?.patientName || 'Unknown Patient'}
-                      </p>
-                      <p className="text-sm text-gray-600">
-                        {appointment.appointmentTime} - {appointment.serviceType}
-                      </p>
-                    </div>
-                    <div className="text-right">
-                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(appointment.status)}`}>
-                        {appointment.status}
-                      </span>
-                      <p className="text-sm text-gray-600 mt-1">{appointment.doctorName}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="text-gray-500 text-center py-8">No appointments found for this date.</p>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-    );
+    const now = new Date();
+    const header = `<h1>Appointments (${rangeLabel}) — Printed ${now.toLocaleDateString()} ${now.toLocaleTimeString()}</h1>`;
+    return `<!doctype html><html><head><meta charset="utf-8"/>${styles}</head><body>${header}${sections}</body></html>`;
   };
 
-  const renderWeeklyReport = () => {
-    if (!reportData) return null;
+  const handlePrint = (mode) => {
+    // Determine date window
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    const startOfToday = new Date(today);
+    const endOfToday = new Date(today);
+    endOfToday.setHours(23, 59, 59, 999);
+    
+    const weekStart = new Date(today);
+    weekStart.setDate(today.getDate() - today.getDay());
+    const weekEnd = new Date(weekStart);
+    weekEnd.setDate(weekStart.getDate() + 6);
+    weekEnd.setHours(23, 59, 59, 999);
+    
+    const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+    const monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+    monthEnd.setHours(23, 59, 59, 999);
 
-    return (
-      <div className="space-y-6">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <StatCard title="Total Appointments" value={reportData.statistics?.total || 0} />
-          <StatCard title="Completed" value={reportData.statistics?.completed || 0} color="green" />
-          <StatCard title="Cancelled" value={reportData.statistics?.cancelled || 0} color="red" />
-          <StatCard title="No Shows" value={reportData.statistics?.noShow || 0} color="orange" />
-        </div>
+    // Filter appointments based on mode and selected doctors
+    const base = allAppointments.filter((a) => {
+      // Filter by selected doctors
+      if (selectedDoctors.length > 0 && !selectedDoctors.includes(a.doctorName)) {
+        return false;
+      }
+      
+      // Filter by status for no-show
+      if (mode === "no-show") {
+        const status = (a.status || "").toLowerCase();
+        if (status !== "no-show") return false;
+      }
+      
+      // Filter by date range
+      if (mode !== "no-show") {
+        // Parse appointment date correctly to avoid timezone issues
+        let appointmentDate;
+        if (a.appointmentDate instanceof Date) {
+          appointmentDate = new Date(a.appointmentDate);
+          appointmentDate.setHours(0, 0, 0, 0);
+        } else if (typeof a.appointmentDate === "string") {
+          const datePart = a.appointmentDate.split("T")[0];
+          const [year, month, day] = datePart.split("-");
+          appointmentDate = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+        } else {
+          appointmentDate = new Date(a.appointmentDate);
+          appointmentDate.setHours(0, 0, 0, 0);
+        }
+        
+        if (mode === "day") {
+          return appointmentDate >= startOfToday && appointmentDate <= endOfToday;
+        }
+        if (mode === "week") {
+          return appointmentDate >= weekStart && appointmentDate <= weekEnd;
+        }
+        if (mode === "month") {
+          return appointmentDate >= monthStart && appointmentDate <= monthEnd;
+        }
+      }
+      
+      return true;
+    });
 
-        {/* Daily Breakdown */}
-        {reportData.dailyBreakdown && (
-          <Card>
-            <CardHeader>
-              <CardTitle>Daily Breakdown ({reportData.weekStart} to {reportData.weekEnd})</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-3">
-                {Object.entries(reportData.dailyBreakdown).map(([day, data]) => (
-                  <div key={day} className="flex justify-between items-center p-3 border rounded-lg">
-                    <span className="font-medium">{day}</span>
-                    <div className="flex space-x-4 text-sm">
-                      <span>Total: {data.total}</span>
-                      <span className="text-green-600">Completed: {data.completed}</span>
-                      <span className="text-red-600">Cancelled: {data.cancelled}</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        )}
-      </div>
-    );
+    const rows = base.map((a) => ({
+      appointmentTime: a.appointmentTime,
+      appointmentDate: a.appointmentDate,
+      patientName: getPatientName(a),
+      _patientName:
+        a.patient?.obGyneRecord?.patientName ||
+        a.patient?.pediatricRecord?.nameOfChildren,
+      serviceType: a.serviceType,
+      status: a.status,
+      contactInfo: a.contactInfo,
+      contactNumber: a.contactNumber,
+      doctorName: a.doctorName,
+    }));
+
+    // Group by doctor (only include selected doctors)
+    const grouped = rows.reduce((acc, r) => {
+      if (selectedDoctors.length === 0 || selectedDoctors.includes(r.doctorName)) {
+        acc[r.doctorName] = acc[r.doctorName] || [];
+        acc[r.doctorName].push(r);
+      }
+      return acc;
+    }, {});
+
+    // Range label
+    let label;
+    if (mode === "day") label = "Today";
+    else if (mode === "week") label = "This Week";
+    else if (mode === "month") label = "This Month";
+    else if (mode === "no-show") label = "No-Show Appointments";
+    else label = "All Appointments";
+    
+    // Check if there's any data to print
+    if (Object.keys(grouped).length === 0) {
+      alert(`No appointments found for ${label} with the selected doctor filter.`);
+      return;
+    }
+
+    const html = buildPrintHtml(label, grouped);
+    printHtml(html);
   };
 
-  const renderDashboard = () => {
-    if (!reportData) return null;
-
-    return (
-      <div className="space-y-6">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <StatCard title="Today's Appointments" value={reportData.today?.total || 0} />
-          <StatCard title="This Week" value={reportData.thisWeek?.total || 0} color="green" />
-          <StatCard title="This Month" value={reportData.thisMonth?.total || 0} color="blue" />
-          <StatCard title="Total Patients" value={reportData.totalPatients || 0} color="purple" />
-        </div>
-
-        {/* Recent Activity */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Recent Activity</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              {reportData.recentAppointments?.map((appointment) => (
-                <div key={appointment._id} className="flex justify-between items-center p-3 border-b">
-                  <div>
-                    <p className="font-medium">
-                      {appointment.patient?.pediatricRecord?.nameOfChildren || 
-                       appointment.patient?.obGyneRecord?.patientName}
-                    </p>
-                    <p className="text-sm text-gray-600">
-                      {formatDate(appointment.appointmentDate)} at {appointment.appointmentTime}
-                    </p>
-                  </div>
-                  <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(appointment.status)}`}>
-                    {appointment.status}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  };
 
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
-        <h1 className="text-3xl font-bold text-gray-900">Reports & Analytics</h1>
-        <Button onClick={() => fetchReport(activeTab)} className="bg-blue-600 hover:bg-blue-700">
+        <h1 className="text-3xl font-bold text-gray-900">Reports</h1>
+        <Button onClick={() => fetchAllAppointments()} className="bg-blue-600 hover:bg-blue-700">
           Refresh
         </Button>
       </div>
 
-      {/* Filters */}
-      <Card>
-        <CardContent className="p-4">
-          <div className="flex flex-wrap gap-4 items-center">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Report Type</label>
-              <div className="flex space-x-2">
-                {['daily', 'weekly', 'monthly', 'dashboard'].map((tab) => (
-                  <Button
-                    key={tab}
-                    variant={activeTab === tab ? 'default' : 'outline'}
-                    onClick={() => setActiveTab(tab)}
-                    className="capitalize"
-                  >
-                    {tab}
-                  </Button>
-                ))}
-              </div>
+      {/* Analytics */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium text-gray-700">
+              Total Appointments
+            </CardTitle>
+            <Users className="h-5 w-5 text-blue-600" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-3xl font-bold text-blue-700">
+              {analytics.total.toLocaleString()}
             </div>
+            <p className="text-xs text-gray-600 mt-1">
+              All time appointments
+            </p>
+          </CardContent>
+        </Card>
 
-            {activeTab !== 'dashboard' && (
-              <>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Date</label>
-                  <input
-                    type="date"
-                    value={selectedDate}
-                    onChange={(e) => setSelectedDate(e.target.value)}
-                    className="border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
+        <Card className="bg-gradient-to-br from-green-50 to-green-100 border-green-200">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium text-gray-700">
+              Walk-In Appointments
+            </CardTitle>
+            <UserPlus className="h-5 w-5 text-green-600" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-3xl font-bold text-green-700">
+              {analytics.walkIns.toLocaleString()}
+            </div>
+            <p className="text-xs text-gray-600 mt-1">
+              {analytics.walkInPercentage}% of total • Manually added by staff
+            </p>
+          </CardContent>
+        </Card>
 
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Doctor</label>
-                  <select
-                    value={selectedDoctor}
-                    onChange={(e) => setSelectedDoctor(e.target.value)}
-                    className="border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value="">All Doctors</option>
-                    {doctors.map((doctor) => (
-                      <option key={doctor} value={doctor}>{doctor}</option>
-                    ))}
-                  </select>
-                </div>
-              </>
-            )}
+        <Card className="bg-gradient-to-br from-purple-50 to-purple-100 border-purple-200">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium text-gray-700">
+              Online Appointments
+            </CardTitle>
+            <Globe className="h-5 w-5 text-purple-600" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-3xl font-bold text-purple-700">
+              {analytics.online.toLocaleString()}
+            </div>
+            <p className="text-xs text-gray-600 mt-1">
+              {analytics.onlinePercentage}% of total • Booked through patient portal
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Doctor Filter */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Filter className="h-5 w-5" />
+            Filter by Doctor
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex flex-wrap gap-3">
+            <Button
+              variant={selectedDoctors.length === allDoctorNames.length ? "default" : "outline"}
+              size="sm"
+              onClick={() => setSelectedDoctors(allDoctorNames)}
+              className={selectedDoctors.length === allDoctorNames.length ? "bg-blue-600 hover:bg-blue-700" : ""}
+            >
+              Both Doctors
+            </Button>
+            {allDoctorNames.map((doctor) => {
+              const isSelected = selectedDoctors.includes(doctor);
+              return (
+                <Button
+                  key={doctor}
+                  variant={isSelected ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => {
+                    if (isSelected) {
+                      // If clicking selected, remove it (but keep at least one)
+                      if (selectedDoctors.length > 1) {
+                        setSelectedDoctors(selectedDoctors.filter(d => d !== doctor));
+                      }
+                    } else {
+                      // If clicking unselected, add it
+                      setSelectedDoctors([...selectedDoctors, doctor]);
+                    }
+                  }}
+                  className={isSelected ? "bg-blue-600 hover:bg-blue-700" : ""}
+                >
+                  {doctor.includes("Maria") ? "OB-GYNE" : "Pediatrician"}
+                </Button>
+              );
+            })}
+          </div>
+          <p className="text-sm text-gray-600 mt-3">
+            Selected: {selectedDoctors.length === 0 ? "None" : selectedDoctors.join(", ")}
+          </p>
+        </CardContent>
+      </Card>
+
+      {/* Print Options */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Print Appointments</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <Button 
+              variant="outline"
+              onClick={() => handlePrint("day")}
+              className="flex items-center justify-center gap-2 h-20 text-lg"
+            >
+              <Printer className="h-5 w-5" />
+              Daily
+            </Button>
+            <Button 
+              variant="outline"
+              onClick={() => handlePrint("week")}
+              className="flex items-center justify-center gap-2 h-20 text-lg"
+            >
+              <Printer className="h-5 w-5" />
+              Weekly
+            </Button>
+            <Button 
+              variant="outline"
+              onClick={() => handlePrint("month")}
+              className="flex items-center justify-center gap-2 h-20 text-lg"
+            >
+              <Printer className="h-5 w-5" />
+              Monthly
+            </Button>
+            <Button 
+              variant="outline"
+              onClick={() => handlePrint("no-show")}
+              className="flex items-center justify-center gap-2 h-20 text-lg"
+            >
+              <Printer className="h-5 w-5" />
+              All No Shows
+            </Button>
           </div>
         </CardContent>
       </Card>
 
-      {/* Report Content */}
-      {loading ? (
+      {loading && (
         <div className="flex justify-center items-center py-12">
           <LoadingSpinner />
         </div>
-      ) : (
-        <>
-          {activeTab === 'daily' && renderDailyReport()}
-          {activeTab === 'weekly' && renderWeeklyReport()}
-          {activeTab === 'monthly' && renderDailyReport()} {/* Reuse daily layout for monthly */}
-          {activeTab === 'dashboard' && renderDashboard()}
-        </>
+      )}
+
+      {/* Data Status */}
+      {!loading && (
+        <Card>
+          <CardContent className="pt-6">
+            <div className="text-center">
+              <p className="text-sm text-gray-600">
+                <strong>Total Appointments Loaded:</strong> {allAppointments.length}
+              </p>
+              {allAppointments.length === 0 && (
+                <p className="text-sm text-red-600 mt-2">
+                  No appointments found. Click Refresh to reload data.
+                </p>
+              )}
+            </div>
+          </CardContent>
+        </Card>
       )}
     </div>
   );

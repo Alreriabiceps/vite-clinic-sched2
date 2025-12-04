@@ -8,11 +8,13 @@ import {
   Input,
   LoadingSpinner,
   patientsAPI,
+  appointmentsAPI,
+  extractData,
   ObGyneRegistrationModal,
   PediatricRegistrationModal,
   toast,
 } from "../../shared";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   Users,
   Plus,
@@ -25,12 +27,30 @@ import {
   MapPin,
   Edit,
   Eye,
+  GripVertical,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+} from "@dnd-kit/core";
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 
 export default function Patients() {
   const navigate = useNavigate();
   const [patients, setPatients] = useState([]);
+  const [patientLastVisits, setPatientLastVisits] = useState({});
   const [stats, setStats] = useState({
     totalPatients: 0,
     pediatricPatients: 0,
@@ -51,10 +71,50 @@ export default function Patients() {
   const [totalPages, setTotalPages] = useState(1);
   const [hasMore, setHasMore] = useState(false);
 
+  // Resizable columns
+  const tableRef = useRef(null);
+  const [columnWidths, setColumnWidths] = useState({
+    0: 100, 1: 180, 2: 200, 3: 120, 4: 100, 5: 140
+  });
+  const [isResizing, setIsResizing] = useState(false);
+  const [resizeColumn, setResizeColumn] = useState(null);
+
+  // Drag and drop sensors
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
+
   useEffect(() => {
     fetchPatients();
     fetchStats();
+    fetchLastVisits();
   }, [currentPage, selectedType]);
+
+  const fetchLastVisits = async () => {
+    try {
+      const response = await appointmentsAPI.getAll({ limit: 1000 });
+      const data = extractData(response);
+      const appointments = data.appointments || [];
+      
+      // Group appointments by patient and get the latest one
+      const lastVisits = {};
+      appointments.forEach((apt) => {
+        if (apt.patient?._id || apt.patient) {
+          const patientId = apt.patient._id || apt.patient;
+          if (!lastVisits[patientId] || new Date(apt.appointmentDate) > new Date(lastVisits[patientId])) {
+            lastVisits[patientId] = apt.appointmentDate;
+          }
+        }
+      });
+      
+      setPatientLastVisits(lastVisits);
+    } catch (error) {
+      console.error("Error fetching last visits:", error);
+    }
+  };
 
   useEffect(() => {
     // Debounced search
@@ -176,7 +236,45 @@ export default function Patients() {
 
   const formatDate = (dateString) => {
     if (!dateString) return "N/A";
-    return new Date(dateString).toLocaleDateString();
+    // Parse date correctly to avoid timezone issues
+    if (typeof dateString === "string") {
+      const datePart = dateString.split("T")[0];
+      const [year, month, day] = datePart.split("-");
+      const date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+      return date.toLocaleDateString("en-US", {
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      });
+    }
+    return new Date(dateString).toLocaleDateString("en-US", {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    });
+  };
+
+  const getLastVisit = (patient) => {
+    const patientId = patient._id;
+    const lastVisit = patientLastVisits[patientId];
+    return lastVisit ? formatDate(lastVisit) : "N/A";
+  };
+
+  const getContactInfo = (patient) => {
+    const email = patient.contactInfo?.email || patient.obGyneRecord?.email || "";
+    const phone = patient.contactInfo?.phoneNumber || 
+                  patient.obGyneRecord?.contactNumber || 
+                  patient.pediatricRecord?.contactNumber || 
+                  "";
+    
+    if (email && phone) {
+      return `${email}, ${phone}`;
+    } else if (email) {
+      return email;
+    } else if (phone) {
+      return phone;
+    }
+    return "N/A";
   };
 
   const calculateAge = (dateOfBirth) => {
@@ -239,34 +337,149 @@ export default function Patients() {
     }
   };
 
+  const handleResize = (e, columnIndex) => {
+    e.preventDefault();
+    setIsResizing(true);
+    setResizeColumn(columnIndex);
+    const startX = e.pageX;
+    const startWidth = columnWidths[columnIndex];
+
+    const handleMouseMove = (e) => {
+      const diff = e.pageX - startX;
+      // Complete freedom - allow any width from 5px to unlimited
+      const newWidth = Math.max(5, startWidth + diff);
+      setColumnWidths(prev => ({
+        ...prev,
+        [columnIndex]: newWidth
+      }));
+    };
+
+    const handleMouseUp = () => {
+      setIsResizing(false);
+      setResizeColumn(null);
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+  };
+
+  const handleDragEnd = (event) => {
+    const { active, over } = event;
+
+    if (over && active.id !== over.id) {
+      setPatients((items) => {
+        const oldIndex = items.findIndex((item) => item._id === active.id);
+        const newIndex = items.findIndex((item) => item._id === over.id);
+        return arrayMove(items, oldIndex, newIndex);
+      });
+    }
+  };
+
+  // Sortable row component
+  function SortableRow({ patient }) {
+    const {
+      attributes,
+      listeners,
+      setNodeRef,
+      transform,
+      transition,
+      isDragging,
+    } = useSortable({ id: patient._id });
+
+    const style = {
+      transform: CSS.Transform.toString(transform),
+      transition,
+      opacity: isDragging ? 0.5 : 1,
+    };
+
+    return (
+      <tr
+        ref={setNodeRef}
+        style={style}
+        className="border-b border-gray-100 hover:bg-gray-50"
+      >
+        <td className="px-0.5 py-1 border-r border-gray-100">
+          <div className="flex items-center gap-1">
+            <button
+              {...attributes}
+              {...listeners}
+              className="cursor-grab active:cursor-grabbing text-gray-400 hover:text-gray-600"
+            >
+              <GripVertical className="h-3 w-3" />
+            </button>
+            <span className="text-xs text-gray-900">
+              {patient.patientId || patient.patientNumber || "N/A"}
+            </span>
+          </div>
+        </td>
+        <td className="px-0.5 py-1 font-medium border-r border-gray-100 truncate text-xs">
+          {getPatientDisplayName(patient)}
+        </td>
+        <td className="px-0.5 py-1 truncate border-r border-gray-100 text-xs text-gray-600">
+          {getContactInfo(patient)}
+        </td>
+        <td className="px-0.5 py-1 border-r border-gray-100 text-xs text-gray-600">
+          {getLastVisit(patient)}
+        </td>
+        <td className="px-0.5 py-1 border-r border-gray-100">
+          <span
+            className={`px-1.5 py-0.5 rounded-full text-xs font-medium ${getStatusBadgeColor(
+              patient.status
+            )}`}
+          >
+            {patient.status || "New"}
+          </span>
+        </td>
+        <td className="px-0.5 py-1">
+          <div className="flex gap-1">
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-6 px-1.5 text-xs"
+              onClick={() => navigate(`/patients/${patient._id}`)}
+            >
+              View
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-6 px-1.5 text-xs"
+              onClick={() => navigate(`/patients/${patient._id}`)}
+            >
+              Edit
+            </Button>
+          </div>
+        </td>
+      </tr>
+    );
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Patients</h1>
-          <p className="text-gray-600">
-            Manage patient records and information
-          </p>
         </div>
-        <div className="flex gap-2">
-          <Button
-            variant="outline"
-            className="flex items-center gap-2"
-            onClick={() => setIsPediatricModalOpen(true)}
-          >
-            <Baby className="h-4 w-4" />
-            New Pediatric
-          </Button>
-          <Button
-            variant="clinic"
-            className="flex items-center gap-2"
-            onClick={() => setIsObGyneModalOpen(true)}
-          >
-            <Heart className="h-4 w-4" />
-            New OB-GYNE
-          </Button>
-        </div>
+        <Button
+          variant="clinic"
+          className="flex items-center gap-2"
+          onClick={() => {
+            // Show a dialog to choose patient type or default to OB-GYNE
+            setIsObGyneModalOpen(true);
+          }}
+        >
+          <Plus className="h-4 w-4" />
+          Add New Patient
+        </Button>
+      </div>
+
+      {/* Patient Management Section */}
+      <div>
+        <h2 className="text-xl font-bold text-gray-900 mb-2">Patient Management</h2>
+        <p className="text-gray-600 mb-4">Manage patient records and information</p>
       </div>
 
       {/* Search and Tabs */}
@@ -407,14 +620,9 @@ export default function Patients() {
       </div>
 
       {/* Patient List */}
-      <Card className="bg-off-white border-soft-olive-200">
+      <Card className="bg-white border-gray-200">
         <CardHeader>
-          <CardTitle className="text-charcoal">Patient Directory</CardTitle>
-          <CardDescription className="text-muted-gold">
-            Complete patient database with search and filtering
-            {searchQuery && ` - Showing results for "${searchQuery}"`}
-            {selectedType && ` - Filtered by ${selectedType} patients`}
-          </CardDescription>
+          <CardTitle className="text-lg font-bold text-gray-900">All Patients</CardTitle>
         </CardHeader>
         <CardContent>
           {isLoading ? (
@@ -435,98 +643,92 @@ export default function Patients() {
                   : "Start by registering your first patient"}
               </p>
               {!searchQuery && (
-                <div className="flex gap-2 justify-center">
-                  <Button
-                    variant="outline"
-                    onClick={() => setIsPediatricModalOpen(true)}
-                  >
-                    <Baby className="h-4 w-4 mr-2" />
-                    Register Pediatric Patient
-                  </Button>
-                  <Button
-                    variant="clinic"
-                    onClick={() => setIsObGyneModalOpen(true)}
-                  >
-                    <Heart className="h-4 w-4 mr-2" />
-                    Register OB-GYNE Patient
-                  </Button>
-                </div>
+                <Button
+                  variant="clinic"
+                  onClick={() => setIsObGyneModalOpen(true)}
+                  className="flex items-center gap-2 mx-auto"
+                >
+                  <Plus className="h-4 w-4" />
+                  Add New Patient
+                </Button>
               )}
             </div>
           ) : (
-            <div className="space-y-2">
-              {/* Compact Patient Rows */}
-              <div className="divide-y rounded-md border bg-white">
-                {patients.map((patient) => (
-                  <div
-                    key={patient._id}
-                    className="flex items-center justify-between gap-3 px-3 py-3 hover:bg-gray-50"
-                  >
-                    <div className="flex items-center gap-3 min-w-0">
-                      {patient.patientType === "pediatric" ? (
-                        <Baby className="h-4 w-4 text-muted-gold" />
-                      ) : (
-                        <Heart className="h-4 w-4 text-warm-pink" />
-                      )}
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2 min-w-0">
-                          <h3 className="font-medium text-sm text-charcoal truncate max-w-[220px]">
-                            {getPatientDisplayName(patient)}
-                          </h3>
-                          <span className="text-[10px] px-1.5 py-0.5 rounded border text-muted-gold bg-off-white">
-                            {patient.patientId || patient._id}
-                          </span>
-                          <span
-                            className={`ml-1 px-1.5 py-0.5 rounded-full text-[10px] ${getStatusBadgeColor(
-                              patient.status
-                            )}`}
-                          >
-                            {patient.status || "New"}
-                          </span>
-                        </div>
-                        <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-gold mt-1">
-                          <span className="inline-flex items-center gap-1">
-                            <Calendar className="h-3 w-3" /> Age:{" "}
-                            {calculateAge(getPatientBirthDate(patient))}
-                          </span>
-                          <span className="inline-flex items-center gap-1">
-                            <Phone className="h-3 w-3" />{" "}
-                            {patient.contactInfo?.phoneNumber || "N/A"}
-                          </span>
-                          <span className="truncate">
-                            {getPatientSecondaryInfo(patient)}
-                          </span>
-                          <span className="text-muted-gold/70">
-                            Reg: {formatDate(patient.createdAt)}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="flex gap-2 flex-shrink-0">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-7 px-2 border-blue-600 text-white bg-blue-600 hover:bg-blue-700 hover:border-blue-700"
-                        onClick={() => navigate(`/patients/${patient._id}`)}
+            <>
+              <DndContext
+                sensors={sensors}
+                collisionDetection={closestCenter}
+                onDragEnd={handleDragEnd}
+              >
+                <div className="overflow-x-auto">
+                  <table ref={tableRef} className="text-sm border-collapse" style={{ tableLayout: 'fixed' }}>
+                    <colgroup>
+                      <col style={{ width: `${columnWidths[0]}px`, minWidth: '5px', maxWidth: 'none' }} />
+                      <col style={{ width: `${columnWidths[1]}px`, minWidth: '5px', maxWidth: 'none' }} />
+                      <col style={{ width: `${columnWidths[2]}px`, minWidth: '5px', maxWidth: 'none' }} />
+                      <col style={{ width: `${columnWidths[3]}px`, minWidth: '5px', maxWidth: 'none' }} />
+                      <col style={{ width: `${columnWidths[4]}px`, minWidth: '5px', maxWidth: 'none' }} />
+                      <col style={{ width: `${columnWidths[5]}px`, minWidth: '5px', maxWidth: 'none' }} />
+                    </colgroup>
+                    <thead className="bg-gray-50 text-charcoal">
+                      <tr>
+                        <th className="px-0.5 py-1 text-left relative group text-xs font-semibold">
+                          <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-blue-300 group-hover:bg-blue-200 transition-colors" 
+                               onMouseDown={(e) => handleResize(e, 0)}></div>
+                          Patient ID
+                        </th>
+                        <th className="px-0.5 py-1 text-left relative group text-xs font-semibold">
+                          <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-blue-300 group-hover:bg-blue-200 transition-colors" 
+                               onMouseDown={(e) => handleResize(e, 1)}></div>
+                          Name
+                        </th>
+                        <th className="px-0.5 py-1 text-left relative group text-xs font-semibold">
+                          <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-blue-300 group-hover:bg-blue-200 transition-colors" 
+                               onMouseDown={(e) => handleResize(e, 2)}></div>
+                          Contact
+                        </th>
+                        <th className="px-0.5 py-1 text-left relative group text-xs font-semibold">
+                          <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-blue-300 group-hover:bg-blue-200 transition-colors" 
+                               onMouseDown={(e) => handleResize(e, 3)}></div>
+                          Last Visit
+                        </th>
+                        <th className="px-0.5 py-1 text-left relative group text-xs font-semibold">
+                          <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-blue-300 group-hover:bg-blue-200 transition-colors" 
+                               onMouseDown={(e) => handleResize(e, 4)}></div>
+                          Status
+                        </th>
+                        <th className="px-0.5 py-1 text-left relative group text-xs font-semibold">
+                          <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-blue-300 group-hover:bg-blue-200 transition-colors" 
+                               onMouseDown={(e) => handleResize(e, 5)}></div>
+                          Actions
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y">
+                      <SortableContext
+                        items={patients.map((p) => p._id)}
+                        strategy={verticalListSortingStrategy}
                       >
-                        <Edit className="h-3 w-3 mr-1" /> Manage
-                      </Button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-
+                        {patients.map((patient) => (
+                          <SortableRow key={patient._id} patient={patient} />
+                        ))}
+                      </SortableContext>
+                    </tbody>
+                  </table>
+                </div>
+              </DndContext>
+                
               {/* Pagination */}
               {totalPages > 1 && (
-                <div className="flex justify-between items-center pt-4 border-t border-soft-olive-200">
-                  <p className="text-sm text-muted-gold">
+                <div className="flex justify-between items-center pt-4 mt-4 border-t border-gray-200">
+                  <p className="text-sm text-gray-600">
                     Page {currentPage} of {totalPages}
                   </p>
                   <div className="flex gap-2">
                     <Button
                       variant="outline"
                       size="sm"
-                      className="border-warm-pink text-warm-pink hover:bg-warm-pink hover:text-white"
+                      className="border-gray-300 text-gray-700 hover:bg-gray-50"
                       disabled={currentPage === 1}
                       onClick={() =>
                         setCurrentPage((prev) => Math.max(1, prev - 1))
@@ -537,7 +739,7 @@ export default function Patients() {
                     <Button
                       variant="outline"
                       size="sm"
-                      className="border-warm-pink text-warm-pink hover:bg-warm-pink hover:text-white"
+                      className="border-gray-300 text-gray-700 hover:bg-gray-50"
                       disabled={!hasMore}
                       onClick={() => setCurrentPage((prev) => prev + 1)}
                     >
@@ -546,7 +748,7 @@ export default function Patients() {
                   </div>
                 </div>
               )}
-            </div>
+            </>
           )}
         </CardContent>
       </Card>

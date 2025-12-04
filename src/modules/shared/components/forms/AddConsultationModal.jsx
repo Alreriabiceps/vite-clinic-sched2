@@ -10,10 +10,46 @@ import { toast } from "../ui/toaster";
 const AddConsultationModal = ({
   patientId,
   patientType,
+  consultation,
   onClose,
   onSuccess,
 }) => {
+  const isEditing = !!consultation;
   const [formData, setFormData] = useState(() => {
+    if (isEditing && consultation) {
+      // Pre-fill form with existing consultation data
+      if (patientType === "pediatric") {
+        return {
+          date: consultation.date ? new Date(consultation.date).toISOString().split("T")[0] : new Date().toISOString().split("T")[0],
+          historyAndPE: consultation.historyAndPE || "",
+          natureTxn: consultation.natureTxn || "",
+          impression: consultation.impression || "",
+        };
+      } else {
+        // OB-GYNE
+        const historyPhysicalExam = consultation.historyPhysicalExam || "";
+        const assessmentPlan = consultation.assessmentPlan || "";
+        return {
+          date: consultation.date ? new Date(consultation.date).toISOString().split("T")[0] : new Date().toISOString().split("T")[0],
+          bp: consultation.bp || "",
+          pr: consultation.pr || "",
+          rr: consultation.rr || "",
+          temp: consultation.temp || "",
+          weight: consultation.weight || "",
+          bmi: consultation.bmi || "",
+          aog: consultation.aog || "",
+          fh: consultation.fh || "",
+          fht: consultation.fht || "",
+          internalExam: consultation.internalExam || "",
+          history: consultation.history || historyPhysicalExam.split("|")[0] || "",
+          physicalExam: consultation.physicalExam || historyPhysicalExam.split("|")[1] || "",
+          assessment: consultation.assessment || assessmentPlan.split("|")[0] || "",
+          plan: consultation.plan || assessmentPlan.split("|")[1] || "",
+          nextAppointment: consultation.nextAppointment ? new Date(consultation.nextAppointment).toISOString().split("T")[0] : "",
+        };
+      }
+    }
+
     const commonState = { date: new Date().toISOString().split("T")[0] };
 
     if (patientType === "pediatric") {
@@ -84,8 +120,13 @@ const AddConsultationModal = ({
         delete payload.plan;
       }
 
-      await patientsAPI.addConsultation(patientId, payload);
-      toast.success("Consultation record added successfully!");
+      if (isEditing && consultation?._id) {
+        await patientsAPI.updateConsultation(patientId, consultation._id, payload);
+        toast.success("Consultation record updated successfully!");
+      } else {
+        await patientsAPI.addConsultation(patientId, payload);
+        toast.success("Consultation record added successfully!");
+      }
       if (onSuccess) onSuccess();
     } catch (error) {
       console.error("Error adding consultation:", error);
@@ -289,7 +330,7 @@ const AddConsultationModal = ({
           <CardHeader className="flex flex-row items-center justify-between sticky top-0 bg-white z-10 border-b py-4">
             <CardTitle className="flex items-center space-x-2">
               <Stethoscope className="h-5 w-5" />
-              <span>Add Consultation Record</span>
+              <span>{isEditing ? "Edit Consultation Record" : "Add Consultation Record"}</span>
             </CardTitle>
             <Button variant="ghost" size="icon" onClick={onClose}>
               <X className="h-5 w-5" />

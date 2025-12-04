@@ -14,7 +14,10 @@ import {
   LogOut,
   Settings,
   Plus,
-  History
+  History,
+  Bell,
+  X,
+  RefreshCw
 } from 'lucide-react';
 export default function PatientDashboard() {
   const navigate = useNavigate();
@@ -22,6 +25,9 @@ export default function PatientDashboard() {
   const [upcomingAppointments, setUpcomingAppointments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [hasPendingAppointment, setHasPendingAppointment] = useState(false);
+  const [notifications, setNotifications] = useState([]);
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
 
   useEffect(() => {
     if (!patient && !authLoading) {
@@ -31,8 +37,20 @@ export default function PatientDashboard() {
 
     if (patient) {
       fetchUpcomingAppointments();
+      fetchNotifications();
     }
   }, [patient, authLoading, navigate]);
+
+  // Refresh notifications periodically
+  useEffect(() => {
+    if (patient) {
+      const interval = setInterval(() => {
+        fetchNotifications();
+      }, 30000); // Check every 30 seconds
+
+      return () => clearInterval(interval);
+    }
+  }, [patient]);
 
   const fetchUpcomingAppointments = async () => {
     try {
@@ -65,6 +83,86 @@ export default function PatientDashboard() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const fetchNotifications = async () => {
+    try {
+      const response = await patientBookingAPI.getMyAppointments();
+      const data = extractData(response);
+      const appointments = data.appointments || [];
+      
+      // Filter for notifications (cancelled or rescheduled appointments)
+      const notificationList = appointments
+        .filter(apt => {
+          const status = apt.status?.toLowerCase();
+          return (
+            status === 'cancellation_pending' ||
+            status === 'reschedule_pending' ||
+            (status === 'cancelled' && apt.cancellationRequest && !apt.cancellationRequest.requestedBy) ||
+            (status === 'rescheduled' && apt.rescheduledFrom)
+          );
+        })
+        .map(apt => {
+          const status = apt.status?.toLowerCase();
+          let type = 'info';
+          let title = '';
+          let message = '';
+          let actionUrl = '/patient/appointments';
+
+          if (status === 'cancellation_pending' && apt.cancellationRequest && !apt.cancellationRequest.requestedBy) {
+            type = 'cancel';
+            title = 'Appointment Cancellation Request';
+            const timeStr = apt.appointmentTime || '';
+            message = `Your appointment with ${apt.doctorName} on ${formatDate(apt.appointmentDate)}${timeStr ? ` at ${timeStr}` : ''} has been cancelled.`;
+            if (apt.cancellationRequest?.reason) {
+              message += ` Reason: ${apt.cancellationRequest.reason}`;
+            }
+          } else if (status === 'reschedule_pending' && (apt.rescheduledFrom || apt.rescheduleRequest)) {
+            type = 'reschedule';
+            title = 'Appointment Reschedule Request';
+            if (apt.rescheduledFrom) {
+              const originalTime = apt.rescheduledFrom.originalTime || '';
+              const newTime = apt.appointmentTime || '';
+              message = `Your appointment with ${apt.doctorName} has been rescheduled from ${formatDate(apt.rescheduledFrom.originalDate)}${originalTime ? ` at ${originalTime}` : ''} to ${formatDate(apt.appointmentDate)}${newTime ? ` at ${newTime}` : ''}.`;
+              if (apt.rescheduledFrom.reason) {
+                message += ` Reason: ${apt.rescheduledFrom.reason}`;
+              }
+            } else if (apt.rescheduleRequest) {
+              message = `Your appointment with ${apt.doctorName} has been rescheduled. Please check your appointments for details.`;
+            }
+          }
+
+          return {
+            id: apt.appointmentId || apt._id,
+            type,
+            title,
+            message,
+            appointmentId: apt.appointmentId,
+            appointment: apt,
+            timestamp: apt.updatedAt || apt.createdAt || new Date().toISOString(),
+            read: false,
+            actionUrl
+          };
+        })
+        .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+
+      setNotifications(notificationList);
+      setUnreadCount(notificationList.filter(n => !n.read).length);
+    } catch (error) {
+      console.error('Error fetching notifications:', error);
+    }
+  };
+
+  const markNotificationAsRead = (notificationId) => {
+    setNotifications(prev => 
+      prev.map(n => n.id === notificationId ? { ...n, read: true } : n)
+    );
+    setUnreadCount(prev => Math.max(0, prev - 1));
+  };
+
+  const markAllAsRead = () => {
+    setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+    setUnreadCount(0);
   };
 
   const handleLogout = async () => {
@@ -129,6 +227,119 @@ export default function PatientDashboard() {
                 <p className="font-medium text-charcoal">{patient.fullName}</p>
                 <p className="text-sm text-muted-gold">{patient.email}</p>
               </div>
+              
+              {/* Notifications Bell */}
+              <div className="relative">
+                <button
+                  onClick={() => setShowNotifications(!showNotifications)}
+                  className="relative p-2 rounded-full hover:bg-gray-100 transition-colors"
+                >
+                  <Bell className="h-5 w-5 text-charcoal" />
+                  {unreadCount > 0 && (
+                    <span className="absolute top-0 right-0 h-5 w-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center font-bold">
+                      {unreadCount > 9 ? '9+' : unreadCount}
+                    </span>
+                  )}
+                </button>
+
+                {/* Notifications Dropdown */}
+                {showNotifications && (
+                  <>
+                    <div 
+                      className="fixed inset-0 z-10" 
+                      onClick={() => setShowNotifications(false)}
+                    />
+                    <div className="absolute right-0 mt-2 w-80 bg-white rounded-lg shadow-xl border border-gray-200 z-20 max-h-96 overflow-hidden flex flex-col">
+                      <div className="p-4 border-b border-gray-200 flex items-center justify-between">
+                        <h3 className="font-semibold text-charcoal">Notifications</h3>
+                        {unreadCount > 0 && (
+                          <button
+                            onClick={markAllAsRead}
+                            className="text-xs text-warm-pink hover:text-warm-pink-700"
+                          >
+                            Mark all as read
+                          </button>
+                        )}
+                      </div>
+                      <div className="overflow-y-auto flex-1">
+                        {notifications.length === 0 ? (
+                          <div className="p-8 text-center">
+                            <Bell className="h-12 w-12 text-gray-300 mx-auto mb-2" />
+                            <p className="text-sm text-gray-500">No notifications</p>
+                          </div>
+                        ) : (
+                          <div className="divide-y divide-gray-100">
+                            {notifications.map((notification) => (
+                              <div
+                                key={notification.id}
+                                className={`p-4 hover:bg-gray-50 cursor-pointer transition-colors ${
+                                  !notification.read ? 'bg-blue-50/50' : ''
+                                }`}
+                                onClick={() => {
+                                  markNotificationAsRead(notification.id);
+                                  navigate(notification.actionUrl);
+                                  setShowNotifications(false);
+                                }}
+                              >
+                                <div className="flex items-start gap-3">
+                                  <div className={`p-2 rounded-full ${
+                                    notification.type === 'cancel' 
+                                      ? 'bg-red-100' 
+                                      : notification.type === 'reschedule'
+                                      ? 'bg-blue-100'
+                                      : 'bg-gray-100'
+                                  }`}>
+                                    {notification.type === 'cancel' ? (
+                                      <X className="h-4 w-4 text-red-600" />
+                                    ) : notification.type === 'reschedule' ? (
+                                      <RefreshCw className="h-4 w-4 text-blue-600" />
+                                    ) : (
+                                      <Bell className="h-4 w-4 text-gray-600" />
+                                    )}
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                    <div className="flex items-start justify-between gap-2">
+                                      <p className="font-medium text-sm text-charcoal">
+                                        {notification.title}
+                                      </p>
+                                      {!notification.read && (
+                                        <span className="h-2 w-2 bg-blue-500 rounded-full flex-shrink-0 mt-1" />
+                                      )}
+                                    </div>
+                                    <p className="text-xs text-muted-gold mt-1 line-clamp-2">
+                                      {notification.message}
+                                    </p>
+                                    <p className="text-xs text-gray-400 mt-2">
+                                      {new Date(notification.timestamp).toLocaleDateString('en-US', {
+                                        month: 'short',
+                                        day: 'numeric',
+                                        hour: 'numeric',
+                                        minute: '2-digit'
+                                      })}
+                                    </p>
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                      {notifications.length > 0 && (
+                        <div className="p-3 border-t border-gray-200 text-center">
+                          <Link
+                            to="/patient/appointments"
+                            onClick={() => setShowNotifications(false)}
+                            className="text-sm text-warm-pink hover:text-warm-pink-700 font-medium"
+                          >
+                            View All Appointments
+                          </Link>
+                        </div>
+                      )}
+                    </div>
+                  </>
+                )}
+              </div>
+
               <Button variant="outline" onClick={handleLogout} className="border-warm-pink text-warm-pink hover:bg-warm-pink hover:text-white">
                 <LogOut className="h-4 w-4 mr-2" />
                 Logout

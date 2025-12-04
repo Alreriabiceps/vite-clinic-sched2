@@ -12,7 +12,7 @@ import {
   LoadingSpinner,
 } from "../../shared";
 import { useState, useEffect } from "react";
-import { Calendar, Users, FileText, Clock, Activity, Plus } from "lucide-react";
+import { Calendar, Users, FileText, Clock, Activity } from "lucide-react";
 export default function Dashboard() {
   const { user } = useAuth();
   const [dashboardData, setDashboardData] = useState({
@@ -42,6 +42,7 @@ export default function Dashboard() {
         dashboardResponse,
         todayAppointmentsResponse,
         patientsStatsResponse,
+        recentAppointmentsResponse,
       ] = await Promise.all([
         reportsAPI.getDashboardAnalytics().catch(() => ({ data: {} })),
         appointmentsAPI
@@ -50,47 +51,143 @@ export default function Dashboard() {
         patientsAPI
           .search({ limit: 1 })
           .catch(() => ({ data: { pagination: { total: 0 } } })),
+        // Fetch recent appointments (limit 50 to get enough data, then we'll take top 5)
+        appointmentsAPI
+          .getAll({ limit: 50 })
+          .catch((err) => {
+            console.error('Error fetching recent appointments:', err);
+            return { data: { appointments: [] } };
+          }),
       ]);
 
       const todayAppointments =
         todayAppointmentsResponse.data?.appointments || [];
       const totalPatients = patientsStatsResponse.data?.pagination?.total || 0;
+      
+      // Handle different possible response structures
+      let recentAppointments = [];
+      if (recentAppointmentsResponse?.data?.data?.appointments) {
+        recentAppointments = recentAppointmentsResponse.data.data.appointments;
+      } else if (recentAppointmentsResponse?.data?.appointments) {
+        recentAppointments = recentAppointmentsResponse.data.appointments;
+      } else if (Array.isArray(recentAppointmentsResponse?.data)) {
+        recentAppointments = recentAppointmentsResponse.data;
+      }
+      
+      console.log('Recent appointments fetched:', recentAppointments.length);
 
       // Find next appointment
       const now = new Date();
       const upcomingAppointments = todayAppointments
         .filter((apt) => {
-          const aptDateTime = new Date(`${apt.date}T${apt.time}`);
+          const aptDate = apt.appointmentDate;
+          const aptTime = apt.appointmentTime;
+          if (!aptDate || !aptTime) return false;
+          // Convert appointmentTime from "HH:MM AM/PM" to 24-hour format for comparison
+          const dateStr = new Date(aptDate).toISOString().split('T')[0];
+          const timeStr = aptTime;
+          // Create a proper date object
+          const [time, period] = timeStr.split(' ');
+          const [hours, minutes] = time.split(':');
+          let hour24 = parseInt(hours);
+          if (period === 'PM' && hour24 !== 12) hour24 += 12;
+          if (period === 'AM' && hour24 === 12) hour24 = 0;
+          const aptDateTime = new Date(aptDate);
+          aptDateTime.setHours(hour24, parseInt(minutes), 0, 0);
           return aptDateTime > now && apt.status === "confirmed";
         })
         .sort((a, b) => {
-          const timeA = new Date(`${a.date}T${a.time}`);
-          const timeB = new Date(`${b.date}T${b.time}`);
-          return timeA - timeB;
+          const dateA = new Date(a.appointmentDate);
+          const dateB = new Date(b.appointmentDate);
+          return dateA - dateB;
         });
 
       const nextAppointment = upcomingAppointments[0] || null;
 
-      // Generate recent activities from appointments
-      const recentActivities = todayAppointments.slice(0, 3).map((apt) => ({
-        type:
-          apt.status === "confirmed"
-            ? "appointment_confirmed"
-            : "appointment_pending",
-        message: `${
-          apt.status === "confirmed"
-            ? "Appointment confirmed"
-            : "New appointment"
-        }`,
-        details: `Patient: ${apt.patientName} - ${apt.time}`,
-        timestamp: apt.createdAt || new Date().toISOString(),
-      }));
+      // Build activity feed from appointments only
+      const activities = [];
+
+      // Add appointment activities
+      recentAppointments.forEach((apt) => {
+        if (!apt) return;
+        
+        // Extract patient name from various possible sources
+        let patientName = apt.patientName;
+        if (!patientName && apt.patient) {
+          if (typeof apt.patient === 'object') {
+            if (apt.patient.pediatricRecord?.nameOfChildren) {
+              patientName = apt.patient.pediatricRecord.nameOfChildren;
+            } else if (apt.patient.obGyneRecord?.patientName) {
+              patientName = apt.patient.obGyneRecord.patientName;
+            }
+          }
+        }
+        patientName = patientName || 'Unknown Patient';
+
+        const serviceType = apt.serviceType || 'Consultation';
+        // Use updatedAt for status changes, createdAt for new appointments
+        const timestamp = apt.updatedAt || apt.createdAt || new Date().toISOString();
+        
+        let activityType = 'appointment_pending';
+        let message = '';
+
+        switch (apt.status) {
+          case 'completed':
+            activityType = 'appointment_completed';
+            message = 'Appointment completed';
+            break;
+          case 'confirmed':
+            activityType = 'appointment_confirmed';
+            message = 'Appointment confirmed';
+            break;
+          case 'scheduled':
+            activityType = 'appointment_scheduled';
+            message = 'Appointment scheduled';
+            break;
+          case 'cancelled':
+            activityType = 'appointment_cancelled';
+            message = 'Appointment cancelled';
+            break;
+          default:
+            activityType = 'appointment_pending';
+            message = 'New appointment';
+        }
+
+        // Format service type for display
+        const serviceDisplay = serviceType
+          .split('_')
+          .map(word => word.charAt(0) + word.slice(1).toLowerCase())
+          .join(' ');
+
+        activities.push({
+          type: activityType,
+          message: message,
+          details: `${patientName} - ${serviceDisplay}`,
+          timestamp: timestamp,
+        });
+      });
+
+      // Sort activities by timestamp (most recent first) and limit to 5
+      const recentActivities = activities
+        .sort((a, b) => {
+          const dateA = new Date(a.timestamp);
+          const dateB = new Date(b.timestamp);
+          return dateB - dateA; // Most recent first
+        })
+        .slice(0, 5)
+        .map(activity => ({
+          ...activity,
+          formattedTime: formatActivityTime(activity.timestamp),
+        }));
+      
+      console.log('Activities created:', activities.length);
+      console.log('Recent activities (top 5):', recentActivities.length);
 
       setDashboardData({
         todayAppointments: todayAppointments.length,
         totalPatients,
         pendingReports: todayAppointments.filter(
-          (apt) => apt.status === "pending"
+          (apt) => apt.status === "pending" || apt.status === "scheduled"
         ).length,
         nextAppointment,
         recentActivities,
@@ -103,8 +200,36 @@ export default function Dashboard() {
     }
   };
 
+  const formatActivityTime = (timestamp) => {
+    if (!timestamp) return '';
+    
+    const now = new Date();
+    const activityTime = new Date(timestamp);
+    const diffMs = now - activityTime;
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+
+    if (diffMins < 1) return 'Just now';
+    if (diffMins < 60) return `${diffMins} ${diffMins === 1 ? 'minute' : 'minutes'} ago`;
+    if (diffHours < 24) return `${diffHours} ${diffHours === 1 ? 'hour' : 'hours'} ago`;
+    if (diffDays === 1) return 'Yesterday';
+    if (diffDays < 7) return `${diffDays} days ago`;
+    
+    // Format as date
+    return activityTime.toLocaleDateString('en-US', { 
+      month: 'short', 
+      day: 'numeric', 
+      year: activityTime.getFullYear() !== now.getFullYear() ? 'numeric' : undefined 
+    });
+  };
+
   const formatTime = (time) => {
     if (!time) return "N/A";
+    // Handle both "HH:MM AM/PM" and "HH:MM" formats
+    if (time.includes('AM') || time.includes('PM')) {
+      return time; // Already in correct format
+    }
     const [hours, minutes] = time.split(":");
     const hour = parseInt(hours);
     const ampm = hour >= 12 ? "PM" : "AM";
@@ -116,6 +241,12 @@ export default function Dashboard() {
     switch (type) {
       case "appointment_confirmed":
         return "bg-soft-olive-500";
+      case "appointment_completed":
+        return "bg-green-500";
+      case "appointment_scheduled":
+        return "bg-blue-500";
+      case "appointment_cancelled":
+        return "bg-red-500";
       case "appointment_pending":
         return "bg-muted-gold";
       case "patient_registered":
@@ -134,32 +265,24 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="space-y-5">
-      {/* Welcome Section */}
-      <div className="bg-gradient-to-r from-warm-pink to-muted-gold rounded-lg p-4 text-white">
-        <h1 className="text-2xl font-bold mb-2">
-          Welcome to VM Mother and Child Clinic
-        </h1>
-        <p className="text-white/90">
-          Manage appointments, patient records, and clinic operations
-          efficiently.
+    <div className="space-y-6">
+      {/* Header */}
+      <div>
+        <h1 className="text-3xl font-bold text-charcoal mb-1">Dashboard</h1>
+        <p className="text-muted-gold">
+          Welcome back, {user?.firstName || 'Admin'}
         </p>
-        {user && (
-          <p className="text-white/80 text-sm mt-1">
-            Logged in as: {user.firstName} {user.lastName} ({user.role})
-          </p>
-        )}
       </div>
 
       {/* Error Alert */}
       {error && (
-        <div className="bg-light-blush border border-warm-pink-200 rounded-lg p-4">
-          <p className="text-warm-pink-700 text-sm">{error}</p>
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+          <p className="text-red-700 text-sm">{error}</p>
           <Button
             variant="outline"
             size="sm"
             onClick={fetchDashboardData}
-            className="mt-2 border-warm-pink text-warm-pink hover:bg-warm-pink hover:text-white"
+            className="mt-2 border-red-300 text-red-700 hover:bg-red-100"
           >
             Retry
           </Button>
@@ -227,164 +350,56 @@ export default function Dashboard() {
           <CardContent>
             <div className="text-2xl font-bold text-warm-pink">
               {dashboardData.nextAppointment
-                ? formatTime(dashboardData.nextAppointment.time)
+                ? formatTime(dashboardData.nextAppointment.appointmentTime || dashboardData.nextAppointment.time)
                 : "None"}
             </div>
             <p className="text-xs text-muted-gold">
               {dashboardData.nextAppointment
-                ? `${dashboardData.nextAppointment.patientName} - ${dashboardData.nextAppointment.doctorName}`
+                ? `${dashboardData.nextAppointment.patientName || 'Patient'} - ${dashboardData.nextAppointment.doctorName || 'Doctor'}`
                 : "No upcoming appointments"}
             </p>
           </CardContent>
         </Card>
       </div>
 
-      {/* Quick Actions */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <Card className="bg-off-white border-soft-olive-200">
-          <CardHeader>
-            <CardTitle className="text-charcoal">Quick Actions</CardTitle>
-            <CardDescription className="text-muted-gold">
-              Common tasks and shortcuts
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-2.5">
-            <Button
-              variant="outline"
-              className="w-full justify-between border-warm-pink text-warm-pink hover:bg-warm-pink hover:text-white"
-              onClick={() => (window.location.href = "/appointments")}
-            >
-              <span className="flex items-center gap-2">
-                <Calendar className="h-4 w-4" />
-                Book New Appointment
-              </span>
-              <Plus className="h-4 w-4" />
-            </Button>
-            <Button
-              variant="outline"
-              className="w-full justify-between border-warm-pink text-warm-pink hover:bg-warm-pink hover:text-white"
-              onClick={() => (window.location.href = "/patients")}
-            >
-              <span className="flex items-center gap-2">
-                <Users className="h-4 w-4" />
-                Add New Patient
-              </span>
-              <Plus className="h-4 w-4" />
-            </Button>
-            <Button
-              variant="outline"
-              className="w-full justify-between border-warm-pink text-warm-pink hover:bg-warm-pink hover:text-white"
-              onClick={() => (window.location.href = "/reports")}
-            >
-              <span className="flex items-center gap-2">
-                <FileText className="h-4 w-4" />
-                Generate Report
-              </span>
-              <Activity className="h-4 w-4" />
-            </Button>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-off-white border-soft-olive-200">
-          <CardHeader>
-            <CardTitle className="text-charcoal">Recent Activity</CardTitle>
-            <CardDescription className="text-muted-gold">
-              Latest updates and changes
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-2.5">
-            {dashboardData.recentActivities.length > 0 ? (
-              dashboardData.recentActivities.map((activity, index) => (
-                <div key={index} className="flex items-start gap-3">
-                  <div
-                    className={`h-2 w-2 rounded-full mt-2 ${getActivityIcon(
-                      activity.type
-                    )}`}
-                  ></div>
-                  <div className="flex-1">
-                    <p className="text-sm font-medium text-charcoal">
-                      {activity.message}
-                    </p>
-                    <p className="text-xs text-muted-gold">
-                      {activity.details}
-                    </p>
-                  </div>
-                </div>
-              ))
-            ) : (
-              <div className="text-center py-4 text-muted-gold">
-                <Activity className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                <p className="text-sm">No recent activity</p>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Doctor Schedules */}
+      {/* Recent Activity */}
       <Card className="bg-off-white border-soft-olive-200">
         <CardHeader>
-          <CardTitle className="text-charcoal">Doctor Schedules</CardTitle>
+          <CardTitle className="text-charcoal">Recent Activity</CardTitle>
           <CardDescription className="text-muted-gold">
-            Current week availability
+            Latest actions in the system
           </CardDescription>
         </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="bg-light-blush p-4 rounded-lg border border-warm-pink-200">
-              <h3 className="font-semibold text-charcoal mb-2">
-                Dr. Maria Sarah L. Manaloto
-              </h3>
-              <p className="text-sm text-muted-gold mb-3">OB-GYNE Specialist</p>
-              <div className="space-y-1 text-sm text-charcoal">
-                <div className="flex justify-between">
-                  <span>Monday:</span>
-                  <span className="text-warm-pink font-medium">
-                    8:00 AM - 12:00 PM
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Wednesday:</span>
-                  <span className="text-warm-pink font-medium">
-                    9:00 AM - 2:00 PM
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Friday:</span>
-                  <span className="text-warm-pink font-medium">
-                    1:00 PM - 5:00 PM
-                  </span>
+        <CardContent className="space-y-3">
+          {dashboardData.recentActivities.length > 0 ? (
+            dashboardData.recentActivities.map((activity, index) => (
+              <div key={index} className="flex items-start gap-3 pb-3 border-b border-soft-olive-200 last:border-0 last:pb-0">
+                <div
+                  className={`h-2 w-2 rounded-full mt-2 flex-shrink-0 ${getActivityIcon(
+                    activity.type
+                  )}`}
+                ></div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-charcoal">
+                    {activity.message}
+                  </p>
+                  <p className="text-xs text-muted-gold mt-1">
+                    {activity.details}
+                  </p>
+                  {activity.formattedTime && (
+                    <p className="text-xs text-muted-gold/70 mt-0.5">
+                      {activity.formattedTime}
+                    </p>
+                  )}
                 </div>
               </div>
+            ))
+          ) : (
+            <div className="text-center py-8 text-muted-gold">
+              <Activity className="h-8 w-8 mx-auto mb-2 opacity-50" />
+              <p className="text-sm">No recent activity</p>
             </div>
-
-            <div className="bg-soft-olive-100 p-4 rounded-lg border border-soft-olive-300">
-              <h3 className="font-semibold text-charcoal mb-2">
-                Dr. Shara Laine S. Vino
-              </h3>
-              <p className="text-sm text-muted-gold mb-3">Pediatrician</p>
-              <div className="space-y-1 text-sm text-charcoal">
-                <div className="flex justify-between">
-                  <span>Monday:</span>
-                  <span className="text-muted-gold-700 font-medium">
-                    1:00 PM - 5:00 PM
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Tuesday:</span>
-                  <span className="text-muted-gold-700 font-medium">
-                    1:00 PM - 5:00 PM
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Thursday:</span>
-                  <span className="text-muted-gold-700 font-medium">
-                    8:00 AM - 12:00 PM
-                  </span>
-                </div>
-              </div>
-            </div>
-          </div>
+          )}
         </CardContent>
       </Card>
     </div>

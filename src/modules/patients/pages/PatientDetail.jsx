@@ -89,20 +89,15 @@ const PatientOverview = ({ patient }) => {
   }
 };
 
-const MedicalRecordsTab = ({ patient }) => {
+const MedicalRecordsTab = ({ patient, onEditConsultation, onDeleteConsultation, onEditImmunization, onDeleteImmunization, fetchPatient }) => {
   const consultations =
     patient.patientType === "ob-gyne"
       ? patient.obGyneRecord?.consultations
       : patient.pediatricRecord?.consultations;
 
-  if (!consultations || consultations.length === 0) {
-    return (
-      <div className="text-center py-12">
-        <FileText className="h-12 w-12 mx-auto text-gray-400" />
-        <p className="mt-2 text-gray-600">No consultation records found.</p>
-      </div>
-    );
-  }
+  const immunizations = patient.patientType === "pediatric"
+    ? patient.pediatricRecord?.immunizations
+    : null;
 
   const renderObGyneConsultation = (consultation) => (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -138,25 +133,113 @@ const MedicalRecordsTab = ({ patient }) => {
 
   return (
     <div className="space-y-4">
-      {consultations
-        .slice()
-        .reverse()
-        .map((consultation) => (
-          <Card key={consultation._id}>
-            <CardHeader>
-              <CardTitle className="text-lg">
-                Consultation on {formatDate(consultation.date)}
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {patient.patientType === "ob-gyne" ? (
-                renderObGyneConsultation(consultation)
-              ) : (
-                <p>Pediatric record view.</p>
-              )}
-            </CardContent>
-          </Card>
-        ))}
+      {/* Consultations */}
+      {consultations && consultations.length > 0 ? (
+        consultations
+          .slice()
+          .reverse()
+          .map((consultation) => (
+            <Card key={consultation._id}>
+              <CardHeader>
+                <div className="flex justify-between items-center">
+                  <CardTitle className="text-lg">
+                    Consultation on {formatDate(consultation.date)}
+                  </CardTitle>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => onEditConsultation(consultation)}
+                      className="h-8 px-2"
+                    >
+                      <Edit className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => onDeleteConsultation(consultation._id)}
+                      className="h-8 px-2 text-red-600 hover:text-red-700 hover:bg-red-50"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent>
+                {patient.patientType === "ob-gyne" ? (
+                  renderObGyneConsultation(consultation)
+                ) : (
+                  <p>Pediatric record view.</p>
+                )}
+              </CardContent>
+            </Card>
+          ))
+      ) : (
+        <div className="text-center py-12">
+          <FileText className="h-12 w-12 mx-auto text-gray-400" />
+          <p className="mt-2 text-gray-600">No consultation records found.</p>
+        </div>
+      )}
+
+      {/* Immunizations (Pediatric only) */}
+      {patient.patientType === "pediatric" && immunizations && immunizations.length > 0 && (
+        <div className="mt-8">
+          <h3 className="text-lg font-semibold mb-4">Immunization Records</h3>
+          <div className="space-y-4">
+            {immunizations
+              .slice()
+              .reverse()
+              .map((immunization) => (
+                <Card key={immunization._id}>
+                  <CardHeader>
+                    <div className="flex justify-between items-center">
+                      <CardTitle className="text-lg">
+                        {immunization.vaccineName || 'Immunization'} - {formatDate(immunization.date)}
+                      </CardTitle>
+                      <div className="flex gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => onEditImmunization(immunization)}
+                          className="h-8 px-2"
+                        >
+                          <Edit className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => onDeleteImmunization(immunization._id)}
+                          className="h-8 px-2 text-red-600 hover:text-red-700 hover:bg-red-50"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                      {immunization.batchNumber && (
+                        <InfoItem label="Batch Number" value={immunization.batchNumber} />
+                      )}
+                      {immunization.manufacturer && (
+                        <InfoItem label="Manufacturer" value={immunization.manufacturer} />
+                      )}
+                      {immunization.site && (
+                        <InfoItem label="Site" value={immunization.site} />
+                      )}
+                      {immunization.route && (
+                        <InfoItem label="Route" value={immunization.route} />
+                      )}
+                      {immunization.notes && (
+                        <InfoItem label="Notes" value={immunization.notes} />
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -174,6 +257,10 @@ const PatientDetail = () => {
   const [consultationModalOpen, setConsultationModalOpen] = useState(false);
   const [immunizationModalOpen, setImmunizationModalOpen] = useState(false);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [editingConsultation, setEditingConsultation] = useState(null);
+  const [editingImmunization, setEditingImmunization] = useState(null);
+  const [deletingConsultationId, setDeletingConsultationId] = useState(null);
+  const [deletingImmunizationId, setDeletingImmunizationId] = useState(null);
   const [editingDiagnosis, setEditingDiagnosis] = useState(null);
   const [diagnosisValue, setDiagnosisValue] = useState("");
   const [savingDiagnosis, setSavingDiagnosis] = useState(false);
@@ -276,6 +363,46 @@ const PatientDetail = () => {
     fetchPatientData(); // Refresh data to show new record
     setConsultationModalOpen(false);
     setImmunizationModalOpen(false);
+    setEditingConsultation(null);
+    setEditingImmunization(null);
+  };
+
+  const handleEditConsultation = (consultation) => {
+    setEditingConsultation(consultation);
+    setConsultationModalOpen(true);
+  };
+
+  const handleDeleteConsultation = async (consultationId) => {
+    if (!window.confirm("Are you sure you want to delete this consultation record?")) {
+      return;
+    }
+    try {
+      await patientsAPI.deleteConsultation(patientId, consultationId);
+      toast.success("Consultation record deleted successfully");
+      fetchPatientData();
+    } catch (error) {
+      console.error("Error deleting consultation:", error);
+      toast.error("Failed to delete consultation record");
+    }
+  };
+
+  const handleEditImmunization = (immunization) => {
+    setEditingImmunization(immunization);
+    setImmunizationModalOpen(true);
+  };
+
+  const handleDeleteImmunization = async (immunizationId) => {
+    if (!window.confirm("Are you sure you want to delete this immunization record?")) {
+      return;
+    }
+    try {
+      await patientsAPI.deleteImmunization(patientId, immunizationId);
+      toast.success("Immunization record deleted successfully");
+      fetchPatientData();
+    } catch (error) {
+      console.error("Error deleting immunization:", error);
+      toast.error("Failed to delete immunization record");
+    }
   };
 
   const handleDeleteConfirm = async () => {
@@ -515,7 +642,14 @@ const PatientDetail = () => {
                 )}
               </div>
             </div>
-            <MedicalRecordsTab patient={patient} />
+            <MedicalRecordsTab 
+              patient={patient} 
+              onEditConsultation={handleEditConsultation}
+              onDeleteConsultation={handleDeleteConsultation}
+              onEditImmunization={handleEditImmunization}
+              onDeleteImmunization={handleDeleteImmunization}
+              fetchPatient={fetchPatientData}
+            />
           </div>
         )}
 
@@ -815,7 +949,11 @@ const PatientDetail = () => {
         <AddConsultationModal
           patientId={patientId}
           patientType={patient.patientType}
-          onClose={() => setConsultationModalOpen(false)}
+          consultation={editingConsultation}
+          onClose={() => {
+            setConsultationModalOpen(false);
+            setEditingConsultation(null);
+          }}
           onSuccess={handleMedicalRecordAdded}
         />
       )}
@@ -823,7 +961,11 @@ const PatientDetail = () => {
       {immunizationModalOpen && isPediatric && (
         <AddImmunizationModal
           patientId={patientId}
-          onClose={() => setImmunizationModalOpen(false)}
+          immunization={editingImmunization}
+          onClose={() => {
+            setImmunizationModalOpen(false);
+            setEditingImmunization(null);
+          }}
           onSuccess={handleMedicalRecordAdded}
         />
       )}

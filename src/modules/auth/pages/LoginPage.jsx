@@ -56,7 +56,7 @@ export default function LoginPage() {
         {/* Login Card */}
         <Card className="medical-card">
           <CardHeader className="text-center">
-            <CardTitle className="text-2xl">Staff Login</CardTitle>
+            <CardTitle className="text-2xl">Admin Login</CardTitle>
             <CardDescription>
               Enter your credentials to access the clinic system
             </CardDescription>
@@ -118,16 +118,6 @@ export default function LoginPage() {
                 )}
               </Button>
             </form>
-
-            {/* Demo Credentials */}
-            <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-md">
-              <h4 className="text-sm font-medium text-blue-900 mb-2">Demo Credentials:</h4>
-              <div className="text-xs text-blue-800 space-y-1">
-                <p><strong>Admin:</strong> admin / admin123</p>
-                <p><strong>Staff:</strong> staff / staff123</p>
-                <p><strong>Doctor:</strong> doctor / doctor123</p>
-              </div>
-            </div>
           </CardContent>
         </Card>
 

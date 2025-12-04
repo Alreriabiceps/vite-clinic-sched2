@@ -59,7 +59,7 @@ function App() {
     >
       <div className="App">
         <Routes>
-          {/* Staff Login Route */}
+          {/* Admin Login Route */}
           <Route
             path="/login"
             element={

@@ -7,11 +7,29 @@ import { X, Plus, Syringe } from "lucide-react";
 import { patientsAPI } from "../../lib/api";
 import { toast } from "../ui/toaster";
 
-const AddImmunizationModal = ({ patientId, onClose, onSuccess }) => {
-  const [formData, setFormData] = useState({
-    vaccine: "",
-    date: new Date().toISOString().split("T")[0],
-    remarks: "",
+const AddImmunizationModal = ({ patientId, immunization, onClose, onSuccess }) => {
+  const isEditing = !!immunization;
+  const [formData, setFormData] = useState(() => {
+    if (isEditing && immunization) {
+      return {
+        vaccine: immunization.vaccine || immunization.vaccineName || "",
+        date: immunization.date ? new Date(immunization.date).toISOString().split("T")[0] : new Date().toISOString().split("T")[0],
+        remarks: immunization.remarks || immunization.notes || "",
+        batchNumber: immunization.batchNumber || "",
+        manufacturer: immunization.manufacturer || "",
+        site: immunization.site || "",
+        route: immunization.route || "",
+      };
+    }
+    return {
+      vaccine: "",
+      date: new Date().toISOString().split("T")[0],
+      remarks: "",
+      batchNumber: "",
+      manufacturer: "",
+      site: "",
+      route: "",
+    };
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -61,9 +79,13 @@ const AddImmunizationModal = ({ patientId, onClose, onSuccess }) => {
     setLoading(true);
 
     try {
-      await patientsAPI.addImmunization(patientId, formData);
-
-      toast.success("Immunization record added successfully!");
+      if (isEditing && immunization?._id) {
+        await patientsAPI.updateImmunization(patientId, immunization._id, formData);
+        toast.success("Immunization record updated successfully!");
+      } else {
+        await patientsAPI.addImmunization(patientId, formData);
+        toast.success("Immunization record added successfully!");
+      }
       onSuccess && onSuccess();
     } catch (error) {
       console.error("Error adding immunization:", error);
@@ -81,7 +103,7 @@ const AddImmunizationModal = ({ patientId, onClose, onSuccess }) => {
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
             <CardTitle className="flex items-center space-x-2">
               <Syringe className="h-5 w-5" />
-              <span>Add Immunization Record</span>
+              <span>{isEditing ? "Edit Immunization Record" : "Add Immunization Record"}</span>
             </CardTitle>
             <Button variant="outline" size="sm" onClick={onClose}>
               <X className="h-4 w-4" />
@@ -158,7 +180,7 @@ const AddImmunizationModal = ({ patientId, onClose, onSuccess }) => {
                   ) : (
                     <Plus className="h-4 w-4" />
                   )}
-                  <span>{loading ? "Adding..." : "Add Immunization"}</span>
+                  <span>{loading ? (isEditing ? "Updating..." : "Adding...") : (isEditing ? "Update Immunization" : "Add Immunization")}</span>
                 </Button>
               </div>
             </form>

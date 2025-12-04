@@ -16,6 +16,8 @@ import {
   DialogHeader,
   DialogTitle,
   DialogFooter,
+  Input,
+  Label,
 } from "../../shared";
 import { useState, useEffect, useRef } from "react";
 import {
@@ -35,6 +37,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Archive,
+  RefreshCw,
 } from "lucide-react";
 import { Calendar, dateFnsLocalizer } from "react-big-calendar";
 import "react-big-calendar/lib/css/react-big-calendar.css";
@@ -316,6 +319,8 @@ export default function Appointments() {
   const [showCompleteModal, setShowCompleteModal] = useState(false);
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [actionAppointment, setActionAppointment] = useState(null);
+  const [selectedRescheduleDate, setSelectedRescheduleDate] = useState("");
+  const [rescheduleCalendarMonth, setRescheduleCalendarMonth] = useState(new Date());
 
   // Modal for showing appointments on a specific date
   const [showDateModal, setShowDateModal] = useState(false);
@@ -501,6 +506,10 @@ export default function Appointments() {
         return "bg-yellow-100 text-yellow-800";
       case "cancelled":
         return "bg-red-100 text-red-700";
+      case "cancellation_pending":
+        return "bg-orange-100 text-orange-700";
+      case "reschedule_pending":
+        return "bg-blue-100 text-blue-700";
       default:
         return "bg-gray-100 text-gray-700";
     }
@@ -516,8 +525,12 @@ export default function Appointments() {
         return <CheckCircle className="h-4 w-4" />;
       case "cancelled":
         return <XCircle className="h-4 w-4" />;
+      case "cancellation_pending":
+        return <XCircle className="h-4 w-4" />;
       case "rescheduled":
         return <Clock className="h-4 w-4" />;
+      case "reschedule_pending":
+        return <RefreshCw className="h-4 w-4" />;
       default:
         return <AlertTriangle className="h-4 w-4" />;
     }
@@ -567,8 +580,8 @@ export default function Appointments() {
           <table>
             <thead>
               <tr>
-                <th>Time</th>
                 <th>Date</th>
+                <th>Time</th>
                 <th>Patient</th>
                 <th>Service</th>
                 <th>Status</th>
@@ -580,12 +593,12 @@ export default function Appointments() {
                 .map(
                   (r) => `
                 <tr>
-                  <td>${r.appointmentTime || ""}</td>
                   <td>${
                     (r.appointmentDate &&
                       new Date(r.appointmentDate).toLocaleDateString()) ||
                     ""
                   }</td>
+                  <td>${r.appointmentTime || ""}</td>
                   <td>${r.patientName || r._patientName || ""}</td>
                   <td>${(r.serviceType || "").replace(/_/g, " ")}</td>
                   <td>${r.status || ""}</td>
@@ -678,11 +691,31 @@ export default function Appointments() {
   };
 
   const formatTime = (timeString) => {
-    return timeString; // Already in AM/PM format
+    if (!timeString) return "";
+    // If already in AM/PM format, return as-is
+    if (timeString.includes("AM") || timeString.includes("PM")) {
+      return timeString;
+    }
+    // Otherwise, assume it's in HH:MM format and convert
+    const [hours, minutes] = timeString.split(":");
+    const hour = parseInt(hours);
+    const ampm = hour >= 12 ? "PM" : "AM";
+    const displayHour = hour % 12 || 12;
+    return `${displayHour}:${minutes} ${ampm}`;
   };
 
   const formatDate = (dateString) => {
-    return new Date(dateString).toLocaleDateString("en-US", {
+    if (!dateString) return "";
+    // Handle both Date objects and date strings
+    let date;
+    if (typeof dateString === 'string') {
+      // If it's a date string like "2025-12-09", parse it as local date to avoid timezone issues
+      const [year, month, day] = dateString.split('T')[0].split('-');
+      date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+    } else {
+      date = new Date(dateString);
+    }
+    return date.toLocaleDateString("en-US", {
       weekday: "short",
       month: "short",
       day: "numeric",
@@ -726,6 +759,11 @@ export default function Appointments() {
     // Status filtering (exact match for segmented control)
     const matchesStatus = (() => {
       if (statusFilter === "all") return true;
+      if (statusFilter === "cancelled") {
+        // Show both cancelled and cancellation_pending in cancelled filter
+        const status = appointment.status?.toLowerCase();
+        return status === "cancelled" || status === "cancellation_pending";
+      }
       return (
         appointment.status && appointment.status.toLowerCase() === statusFilter
       );
@@ -806,13 +844,55 @@ export default function Appointments() {
 
   const handleReschedule = (appointment) => {
     setSelectedAppointment(appointment);
+    const currentDate = appointment.appointmentDate.split("T")[0];
+    setSelectedRescheduleDate(currentDate);
+    setRescheduleCalendarMonth(new Date(currentDate));
     setShowRescheduleModal(true);
   };
 
-  const cancelAppointment = async (appointmentId) => {
+  // Get available dates for a doctor based on their schedule
+  const getAvailableDatesForDoctor = (doctorName, startDate, endDate) => {
+    const schedules = {
+      "Dr. Maria Sarah L. Manaloto": [1, 3, 5], // Monday, Wednesday, Friday
+      "Dr. Shara Laine S. Vino": [1, 2, 4], // Monday, Tuesday, Thursday
+    };
+
+    const availableDays = schedules[doctorName] || [];
+    const availableDates = [];
+    const currentDate = new Date(startDate);
+    const maxDate = new Date(endDate);
+
+    while (currentDate <= maxDate) {
+      const dayOfWeek = currentDate.getDay(); // 0 = Sunday, 1 = Monday, etc.
+      if (availableDays.includes(dayOfWeek)) {
+        availableDates.push(new Date(currentDate));
+      }
+      currentDate.setDate(currentDate.getDate() + 1);
+    }
+
+    return availableDates;
+  };
+
+  // Check if a date is available for the doctor
+  const isDateAvailableForDoctor = (doctorName, dateString) => {
+    if (!dateString) return false;
+    const date = new Date(dateString);
+    const dayOfWeek = date.getDay();
+
+    const schedules = {
+      "Dr. Maria Sarah L. Manaloto": [1, 3, 5], // Monday, Wednesday, Friday
+      "Dr. Shara Laine S. Vino": [1, 2, 4], // Monday, Tuesday, Thursday
+    };
+
+    const availableDays = schedules[doctorName] || [];
+    return availableDays.includes(dayOfWeek);
+  };
+
+  const cancelAppointment = async (appointmentId, reason = "") => {
     try {
       await appointmentsAPI.updateStatus(appointmentId, {
         status: "cancelled",
+        reason: reason || "Cancelled by staff",
       });
       toast.success("Appointment cancelled successfully");
       fetchAppointments();
@@ -856,9 +936,37 @@ export default function Appointments() {
 
   const cancelAppointmentConfirmed = async () => {
     if (actionAppointment) {
-      await cancelAppointment(actionAppointment._id);
+      const reasonInput = document.getElementById("cancelReason");
+      const reason = reasonInput ? reasonInput.value.trim() : "";
+      await cancelAppointment(actionAppointment._id, reason);
       setShowCancelModal(false);
       setActionAppointment(null);
+    }
+  };
+
+  const handleApproveCancellation = async (appointment) => {
+    if (window.confirm("Are you sure you want to approve this cancellation request?")) {
+      try {
+        await appointmentsAPI.approveCancellation(appointment._id);
+        toast.success("Cancellation request approved successfully");
+        fetchAppointments();
+      } catch (error) {
+        console.error("Error approving cancellation:", error);
+        toast.error(handleAPIError(error));
+      }
+    }
+  };
+
+  const handleRejectCancellation = async (appointment) => {
+    if (window.confirm("Are you sure you want to reject this cancellation request? The appointment will be restored to its previous status.")) {
+      try {
+        await appointmentsAPI.rejectCancellation(appointment._id);
+        toast.success("Cancellation request rejected successfully");
+        fetchAppointments();
+      } catch (error) {
+        console.error("Error rejecting cancellation:", error);
+        toast.error(handleAPIError(error));
+      }
     }
   };
 
@@ -1284,24 +1392,6 @@ export default function Appointments() {
               >
                 Dr. Shara
               </Button>
-              {/* Print Controls */}
-              <div className="ml-3 h-6 w-px bg-gray-200" />
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => handlePrint("day")}
-                className="flex items-center gap-1 h-9"
-              >
-                Print Day
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => handlePrint("week")}
-                className="flex items-center gap-1 h-9"
-              >
-                Print Week
-              </Button>
             </div>
           </div>
         </CardContent>
@@ -1673,8 +1763,8 @@ export default function Appointments() {
                 <div className="overflow-x-auto">
                   <table ref={tableRef} className="min-w-full text-sm border-collapse">
                     <colgroup>
-                      <col style={{ width: `${columnWidths[0]}px`, minWidth: '60px' }} />
                       <col style={{ width: `${columnWidths[1]}px`, minWidth: '80px' }} />
+                      <col style={{ width: `${columnWidths[0]}px`, minWidth: '60px' }} />
                       <col style={{ width: `${columnWidths[2]}px`, minWidth: '120px' }} />
                       <col style={{ width: `${columnWidths[3]}px`, minWidth: '150px' }} />
                       <col style={{ width: `${columnWidths[4]}px`, minWidth: '120px' }} />
@@ -1687,13 +1777,13 @@ export default function Appointments() {
                       <tr>
                         <th className="px-1 py-2 text-left relative group">
                           <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-blue-300 group-hover:bg-blue-200 transition-colors" 
-                               onMouseDown={(e) => handleResize(e, 0)}></div>
-                          Time
+                               onMouseDown={(e) => handleResize(e, 1)}></div>
+                          Date
                         </th>
                         <th className="px-1 py-2 text-left relative group">
                           <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-blue-300 group-hover:bg-blue-200 transition-colors" 
-                               onMouseDown={(e) => handleResize(e, 1)}></div>
-                          Date
+                               onMouseDown={(e) => handleResize(e, 0)}></div>
+                          Time
                         </th>
                         <th className="px-1 py-2 text-left relative group">
                           <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-blue-300 group-hover:bg-blue-200 transition-colors" 
@@ -1733,11 +1823,11 @@ export default function Appointments() {
                   <tbody className="divide-y">
                     {paginatedAppointments.map((a) => (
                       <tr key={a._id} className="hover:bg-gray-50">
-                        <td className="px-1 py-2 font-medium border-r border-gray-100">
-                          {formatTime(a.appointmentTime)}
-                        </td>
                         <td className="px-1 py-2 border-r border-gray-100">
                           {formatDate(a.appointmentDate)}
+                        </td>
+                        <td className="px-1 py-2 font-medium border-r border-gray-100">
+                          {formatTime(a.appointmentTime)}
                         </td>
                         <td className="px-1 py-2 truncate border-r border-gray-100">
                           {getPatientName(a)}
@@ -1758,12 +1848,40 @@ export default function Appointments() {
                               a.status
                             )}`}
                           >
-                            {a.status.charAt(0).toUpperCase() +
-                              a.status.slice(1)}
+                            {(() => {
+                              const status = a.status?.toLowerCase();
+                              if (status === "cancellation_pending") {
+                                return "Cancellation Pending";
+                              } else if (status === "reschedule_pending") {
+                                return "Reschedule Pending";
+                              }
+                              return a.status.charAt(0).toUpperCase() + a.status.slice(1);
+                            })()}
                           </span>
                         </td>
                         <td className="px-1 py-2">
                           <div className="flex gap-1.5">
+                            {/* Patient Cancellation Request Actions */}
+                            {a.status === "cancellation_pending" && 
+                             a.cancellationRequest && 
+                             a.cancellationRequest.requestedBy && (
+                              <>
+                                <Button
+                                  size="sm"
+                                  className="h-7 px-2 bg-green-600 hover:bg-green-700 text-white"
+                                  onClick={() => handleApproveCancellation(a)}
+                                >
+                                  Approve
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  className="h-7 px-2 bg-red-600 hover:bg-red-700 text-white"
+                                  onClick={() => handleRejectCancellation(a)}
+                                >
+                                  Reject
+                                </Button>
+                              </>
+                            )}
                             {a.status === "scheduled" && (
                               <Button
                                 size="sm"
@@ -1879,10 +1997,15 @@ export default function Appointments() {
                                             appointment.status
                                           )}`}
                                         >
-                                          {appointment.status
-                                            .charAt(0)
-                                            .toUpperCase() +
-                                            appointment.status.slice(1)}
+                                          {(() => {
+                                            const status = appointment.status?.toLowerCase();
+                                            if (status === "cancellation_pending") {
+                                              return "Cancellation Pending";
+                                            } else if (status === "reschedule_pending") {
+                                              return "Reschedule Pending";
+                                            }
+                                            return appointment.status.charAt(0).toUpperCase() + appointment.status.slice(1);
+                                          })()}
                                         </span>
                                       </div>
                                     </div>
@@ -1899,6 +2022,22 @@ export default function Appointments() {
                                       <p className="italic bg-soft-olive-50 p-2 rounded text-xs">
                                         "{appointment.reasonForVisit}"
                                       </p>
+                                    )}
+                                    {/* Patient Cancellation Request */}
+                                    {appointment.status === "cancellation_pending" && 
+                                     appointment.cancellationRequest && 
+                                     appointment.cancellationRequest.requestedBy && (
+                                      <div className="mt-2 p-2 bg-orange-50 border border-orange-200 rounded text-xs">
+                                        <p className="font-semibold text-orange-800 mb-1">
+                                          Patient Cancellation Request
+                                        </p>
+                                        <p className="text-orange-700">
+                                          <strong>Reason:</strong> {appointment.cancellationRequest.reason || "No reason provided"}
+                                        </p>
+                                        <p className="text-orange-600 text-xs mt-1">
+                                          Requested on {new Date(appointment.cancellationRequest.requestedAt).toLocaleDateString()}
+                                        </p>
+                                      </div>
                                     )}
                                     <div className="flex items-center gap-2">
                                       <Phone className="h-3 w-3" />
@@ -1928,6 +2067,33 @@ export default function Appointments() {
                               {/* Action Buttons */}
                               <div className="border-t border-soft-olive-100 pt-3">
                                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
+                                  {/* Patient Cancellation Request Actions */}
+                                  {appointment.status === "cancellation_pending" && 
+                                   appointment.cancellationRequest && 
+                                   appointment.cancellationRequest.requestedBy && (
+                                    <>
+                                      <Button
+                                        size="sm"
+                                        className="bg-green-600 hover:bg-green-700 text-white font-semibold"
+                                        onClick={() =>
+                                          handleApproveCancellation(appointment)
+                                        }
+                                      >
+                                        <CheckCircle className="h-3 w-3 mr-1" />
+                                        Approve
+                                      </Button>
+                                      <Button
+                                        size="sm"
+                                        className="bg-red-500 hover:bg-red-600 text-white font-semibold"
+                                        onClick={() =>
+                                          handleRejectCancellation(appointment)
+                                        }
+                                      >
+                                        <X className="h-3 w-3 mr-1" />
+                                        Reject
+                                      </Button>
+                                    </>
+                                  )}
                                   {appointment.status === "scheduled" && (
                                     <Button
                                       size="sm"
@@ -2080,7 +2246,10 @@ export default function Appointments() {
                     <div className="text-2xl font-bold text-red-500 mb-1">
                       {
                         visibleAppointments.filter(
-                          (a) => a.status === "cancelled"
+                          (a) => {
+                            const status = a.status?.toLowerCase();
+                            return status === "cancelled" || status === "cancellation_pending";
+                          }
                         ).length
                       }
                     </div>
@@ -2313,22 +2482,182 @@ export default function Appointments() {
                 </div>
               </div>
 
-              <div>
-                <label
-                  htmlFor="newDate"
-                  className="block text-xs font-medium mb-1"
-                >
-                  New Date
+              <div className="col-span-2">
+                <label className="block text-xs font-medium mb-2 text-gray-700">
+                  Select New Date
                 </label>
+                <div className="border-2 border-gray-200 rounded-lg p-4 bg-gradient-to-br from-gray-50 to-white shadow-sm">
+                  {/* Calendar Header */}
+                  <div className="flex items-center justify-between mb-4">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const newMonth = new Date(rescheduleCalendarMonth);
+                        newMonth.setMonth(newMonth.getMonth() - 1);
+                        setRescheduleCalendarMonth(newMonth);
+                      }}
+                      className="p-1 hover:bg-gray-200 rounded transition-colors"
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                    </button>
+                    <h3 className="text-sm font-semibold text-gray-700">
+                      {rescheduleCalendarMonth.toLocaleDateString("en-US", {
+                        month: "long",
+                        year: "numeric",
+                      })}
+                    </h3>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const newMonth = new Date(rescheduleCalendarMonth);
+                        newMonth.setMonth(newMonth.getMonth() + 1);
+                        setRescheduleCalendarMonth(newMonth);
+                      }}
+                      className="p-1 hover:bg-gray-200 rounded transition-colors"
+                    >
+                      <ChevronRight className="h-4 w-4" />
+                    </button>
+                  </div>
+
+                  {/* Calendar Grid */}
+                  <div className="grid grid-cols-7 gap-1.5">
+                    {/* Day headers */}
+                    {["S", "M", "T", "W", "T", "F", "S"].map((day, idx) => (
+                      <div
+                        key={idx}
+                        className="text-center text-xs font-semibold text-gray-400 py-1"
+                      >
+                        {day}
+                      </div>
+                    ))}
+
+                    {(() => {
+                      const year = rescheduleCalendarMonth.getFullYear();
+                      const month = rescheduleCalendarMonth.getMonth();
+                      const firstDay = new Date(year, month, 1);
+                      const lastDay = new Date(year, month + 1, 0);
+                      const startDayOfWeek = firstDay.getDay();
+                      const daysInMonth = lastDay.getDate();
+                      const today = new Date();
+                      today.setHours(0, 0, 0, 0);
+
+                      const cells = [];
+
+                      // Empty cells for days before month starts
+                      for (let i = 0; i < startDayOfWeek; i++) {
+                        cells.push(
+                          <div key={`empty-${i}`} className="h-8"></div>
+                        );
+                      }
+
+                      // Date cells
+                      for (let day = 1; day <= daysInMonth; day++) {
+                        const date = new Date(year, month, day);
+                        // Format date string directly to avoid timezone issues
+                        const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                        const isAvailable = isDateAvailableForDoctor(
+                          selectedAppointment.doctorName,
+                          dateStr
+                        );
+                        const isPast = date < today;
+                        const isSelected = selectedRescheduleDate === dateStr;
+                        // Format today's date string the same way
+                        const todayYear = today.getFullYear();
+                        const todayMonth = today.getMonth();
+                        const todayDay = today.getDate();
+                        const todayStr = `${todayYear}-${String(todayMonth + 1).padStart(2, '0')}-${String(todayDay).padStart(2, '0')}`;
+                        const isToday = dateStr === todayStr;
+
+                        cells.push(
+                          <button
+                            key={day}
+                            type="button"
+                            disabled={!isAvailable || isPast}
+                            onClick={() => {
+                              if (isAvailable && !isPast) {
+                                setSelectedRescheduleDate(dateStr);
+                                const hiddenInput = document.getElementById("newDate");
+                                if (hiddenInput) {
+                                  hiddenInput.value = dateStr;
+                                }
+                              }
+                            }}
+                            className={`
+                              h-8 w-full rounded-md text-xs font-semibold transition-all duration-200
+                              ${
+                                !isAvailable || isPast
+                                  ? "bg-gray-100 text-gray-400 cursor-not-allowed opacity-50"
+                                  : isSelected
+                                  ? "bg-warm-pink text-white shadow-lg scale-110 ring-2 ring-warm-pink ring-offset-1"
+                                  : isToday
+                                  ? "bg-blue-100 text-blue-700 border-2 border-blue-300 hover:bg-blue-200"
+                                  : "bg-white text-gray-700 border border-gray-300 hover:bg-warm-pink hover:text-white hover:border-warm-pink hover:shadow-md"
+                              }
+                              focus:outline-none focus:ring-2 focus:ring-warm-pink focus:ring-offset-1
+                              disabled:cursor-not-allowed
+                            `}
+                            title={
+                              !isAvailable
+                                ? "Doctor not available on this day"
+                                : isPast
+                                ? "Cannot select past dates"
+                                : `Select ${date.toLocaleDateString("en-US", {
+                                    weekday: "long",
+                                    month: "long",
+                                    day: "numeric",
+                                  })}`
+                            }
+                          >
+                            {day}
+                          </button>
+                        );
+                      }
+
+                      return cells;
+                    })()}
+                  </div>
+                </div>
                 <input
-                  type="date"
+                  type="hidden"
                   id="newDate"
-                  defaultValue={
-                    selectedAppointment.appointmentDate.split("T")[0]
-                  }
-                  min={new Date().toISOString().split("T")[0]}
-                  className="w-full p-1.5 text-sm border border-gray-300 rounded-md"
+                  value={selectedRescheduleDate}
                 />
+                {selectedRescheduleDate && (
+                  <div className="mt-2 p-2 bg-warm-pink/10 border border-warm-pink/20 rounded-md">
+                    <p className="text-xs text-warm-pink-700 font-medium">
+                      Selected:{" "}
+                      {(() => {
+                        // Parse date string as local date to avoid timezone issues
+                        const datePart = selectedRescheduleDate.split("T")[0];
+                        const [year, month, day] = datePart.split("-");
+                        const localDate = new Date(
+                          parseInt(year),
+                          parseInt(month) - 1,
+                          parseInt(day)
+                        );
+                        return localDate.toLocaleDateString("en-US", {
+                          weekday: "long",
+                          year: "numeric",
+                          month: "long",
+                          day: "numeric",
+                        });
+                      })()}
+                    </p>
+                  </div>
+                )}
+                <p className="text-xs text-gray-500 mt-2 flex items-center gap-1">
+                  <CalendarIcon className="h-3 w-3" />
+                  {(() => {
+                    const schedules = {
+                      "Dr. Maria Sarah L. Manaloto": "Available: Mon, Wed, Fri",
+                      "Dr. Shara Laine S. Vino": "Available: Mon, Tue, Thu",
+                    };
+                    return (
+                      schedules[selectedAppointment.doctorName] ||
+                      "Check doctor schedule"
+                    );
+                  })()}
+                </p>
               </div>
 
               <div>
@@ -2365,6 +2694,18 @@ export default function Appointments() {
                   ))}
                 </select>
               </div>
+
+              <div className="col-span-2">
+                <Label htmlFor="rescheduleReason" className="text-xs font-medium mb-1">
+                  Reason for Rescheduling
+                </Label>
+                <textarea
+                  id="rescheduleReason"
+                  rows={3}
+                  placeholder="Enter reason for rescheduling..."
+                  className="w-full p-2 text-sm border border-gray-300 rounded-md resize-none focus:outline-none focus:ring-2 focus:ring-warm-pink focus:border-transparent"
+                />
+              </div>
             </div>
 
             <DialogFooter className="mt-2">
@@ -2381,9 +2722,16 @@ export default function Appointments() {
                 onClick={() => {
                   const newDate = document.getElementById("newDate").value;
                   const newTime = document.getElementById("newTime").value;
+                  const reasonInput = document.getElementById("rescheduleReason");
+                  const reason = reasonInput ? reasonInput.value.trim() : "";
 
                   if (!newDate || !newTime) {
                     toast.error("Please select both date and time");
+                    return;
+                  }
+
+                  if (!reason) {
+                    toast.error("Please provide a reason for rescheduling");
                     return;
                   }
 
@@ -2391,7 +2739,7 @@ export default function Appointments() {
                     .reschedule(selectedAppointment._id, {
                       newDate: newDate,
                       newTime: newTime,
-                      reason: "Rescheduled by staff",
+                      reason: reason || "Rescheduled by staff",
                     })
                     .then(() => {
                       toast.success("Appointment rescheduled successfully");
@@ -2419,8 +2767,8 @@ export default function Appointments() {
         open={showNewAppointmentModal}
         onOpenChange={setShowNewAppointmentModal}
       >
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
+        <DialogContent className="sm:max-w-md max-h-[90vh] overflow-hidden flex flex-col">
+          <DialogHeader className="flex-shrink-0">
             <DialogTitle className="flex items-center gap-2">
               <Plus className="h-4 w-4" />
               New Appointment
@@ -2431,29 +2779,29 @@ export default function Appointments() {
               e.preventDefault();
               handleCreateAppointment();
             }}
-            className="space-y-4"
+            className="space-y-2 overflow-y-auto flex-1 pr-2"
           >
             <div>
-              <label className="block text-xs font-medium mb-1">
+              <label className="block text-xs font-medium mb-0.5">
                 Search Patient *
               </label>
               <input
                 type="text"
                 value={patientSearch}
                 onChange={handlePatientSearch}
-                className="w-full p-2 border border-gray-300 rounded-md"
+                className="w-full p-1.5 text-sm border border-gray-300 rounded-md"
                 placeholder="Type name, ID, or contact..."
                 required
               />
               {searching && (
-                <div className="text-xs text-gray-500">Searching...</div>
+                <div className="text-xs text-gray-500 mt-0.5">Searching...</div>
               )}
               {patientResults.length > 0 && (
-                <div className="border rounded bg-white shadow max-h-40 overflow-y-auto mt-1 z-10">
+                <div className="border rounded bg-white shadow max-h-32 overflow-y-auto mt-1 z-10">
                   {patientResults.map((p) => (
                     <div
                       key={p._id}
-                      className="px-3 py-2 hover:bg-blue-50 cursor-pointer text-sm"
+                      className="px-2 py-1.5 hover:bg-blue-50 cursor-pointer text-xs"
                       onClick={() => handleSelectPatient(p)}
                     >
                       {p.patientId} -{" "}
@@ -2467,46 +2815,40 @@ export default function Appointments() {
               )}
             </div>
             {selectedPatient && (
-              <div className="p-2 bg-blue-50 rounded text-xs mb-2">
-                <div>
-                  <b>Patient ID:</b> {selectedPatient.patientId}
-                </div>
-                <div>
-                  <b>Type:</b> {selectedPatient.patientType}
-                </div>
-                <div>
-                  <b>Contact:</b> {selectedPatient.contactInfo?.primaryPhone}
-                </div>
+              <div className="p-1.5 bg-blue-50 rounded text-xs">
+                <div><b>ID:</b> {selectedPatient.patientId} | <b>Type:</b> {selectedPatient.patientType} | <b>Contact:</b> {selectedPatient.contactInfo?.primaryPhone}</div>
               </div>
             )}
-            <div>
-              <label className="block text-xs font-medium mb-1">
-                Patient Name *
-              </label>
-              <input
-                type="text"
-                name="patientName"
-                value={newAppointment.patientName}
-                onChange={handleNewAppointmentChange}
-                className="w-full p-2 border border-gray-300 rounded-md"
-                required
-              />
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="block text-xs font-medium mb-0.5">
+                  Patient Name *
+                </label>
+                <input
+                  type="text"
+                  name="patientName"
+                  value={newAppointment.patientName}
+                  onChange={handleNewAppointmentChange}
+                  className="w-full p-1.5 text-sm border border-gray-300 rounded-md"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium mb-0.5">
+                  Contact Number *
+                </label>
+                <input
+                  type="text"
+                  name="contactNumber"
+                  value={newAppointment.contactNumber}
+                  onChange={handleNewAppointmentChange}
+                  className="w-full p-1.5 text-sm border border-gray-300 rounded-md"
+                  required
+                />
+              </div>
             </div>
             <div>
-              <label className="block text-xs font-medium mb-1">
-                Contact Number *
-              </label>
-              <input
-                type="text"
-                name="contactNumber"
-                value={newAppointment.contactNumber}
-                onChange={handleNewAppointmentChange}
-                className="w-full p-2 border border-gray-300 rounded-md"
-                required
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-medium mb-1">Doctor *</label>
+              <label className="block text-xs font-medium mb-0.5">Doctor *</label>
               <select
                 name="doctorName"
                 value={newAppointment.doctorName}
@@ -2514,7 +2856,7 @@ export default function Appointments() {
                   handleNewAppointmentChange(e);
                   setNewAppointment((prev) => ({ ...prev, serviceType: "" }));
                 }}
-                className="w-full p-2 border border-gray-300 rounded-md"
+                className="w-full p-1.5 text-sm border border-gray-300 rounded-md"
                 required
               >
                 {allDoctorNames.map((doc) => (
@@ -2524,68 +2866,71 @@ export default function Appointments() {
                 ))}
               </select>
             </div>
-            <div>
-              <label className="block text-xs font-medium mb-1">Date *</label>
-              <input
-                type="date"
-                name="appointmentDate"
-                value={newAppointment.appointmentDate}
-                min={new Date().toISOString().split("T")[0]}
-                onChange={handleNewAppointmentChange}
-                className="w-full p-2 border border-gray-300 rounded-md"
-                required
-              />
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="block text-xs font-medium mb-0.5">Date *</label>
+                <input
+                  type="date"
+                  name="appointmentDate"
+                  value={newAppointment.appointmentDate}
+                  min={new Date().toISOString().split("T")[0]}
+                  onChange={handleNewAppointmentChange}
+                  className="w-full p-1.5 text-sm border border-gray-300 rounded-md"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium mb-0.5">Time *</label>
+                <select
+                  name="appointmentTime"
+                  value={newAppointment.appointmentTime}
+                  onChange={handleNewAppointmentChange}
+                  className="w-full p-1.5 text-sm border border-gray-300 rounded-md"
+                  required
+                >
+                  {timeSlots.map((slot) => (
+                    <option key={slot} value={slot}>
+                      {slot}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="block text-xs font-medium mb-0.5">End Time</label>
+                <input
+                  type="text"
+                  name="endTime"
+                  value={newAppointment.endTime}
+                  onChange={handleNewAppointmentChange}
+                  className="w-full p-1.5 text-sm border border-gray-300 rounded-md bg-gray-50"
+                  placeholder="Auto-calculated"
+                  readOnly
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium mb-0.5">Wait Time (min)</label>
+                <input
+                  type="number"
+                  name="estimatedWaitTime"
+                  value={newAppointment.estimatedWaitTime}
+                  onChange={handleNewAppointmentChange}
+                  min="0"
+                  className="w-full p-1.5 text-sm border border-gray-300 rounded-md"
+                  placeholder="15"
+                />
+              </div>
             </div>
             <div>
-              <label className="block text-xs font-medium mb-1">Time *</label>
-              <select
-                name="appointmentTime"
-                value={newAppointment.appointmentTime}
-                onChange={handleNewAppointmentChange}
-                className="w-full p-2 border border-gray-300 rounded-md"
-                required
-              >
-                {timeSlots.map((slot) => (
-                  <option key={slot} value={slot}>
-                    {slot}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs font-medium mb-1">End Time (auto-calculated)</label>
-              <input
-                type="text"
-                name="endTime"
-                value={newAppointment.endTime}
-                onChange={handleNewAppointmentChange}
-                className="w-full p-2 border border-gray-300 rounded-md bg-gray-50"
-                placeholder="Auto-filled when start time is selected"
-                readOnly
-              />
-              <p className="text-xs text-gray-500 mt-1">Automatically set to 30 minutes after start time</p>
-            </div>
-            <div>
-              <label className="block text-xs font-medium mb-1">Waiting Time (minutes)</label>
-              <input
-                type="number"
-                name="estimatedWaitTime"
-                value={newAppointment.estimatedWaitTime}
-                onChange={handleNewAppointmentChange}
-                min="0"
-                className="w-full p-2 border border-gray-300 rounded-md"
-                placeholder="e.g., 15"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-medium mb-1">
+              <label className="block text-xs font-medium mb-0.5">
                 Service Type *
               </label>
               <select
                 name="serviceType"
                 value={newAppointment.serviceType}
                 onChange={handleNewAppointmentChange}
-                className="w-full p-2 border border-gray-300 rounded-md"
+                className="w-full p-1.5 text-sm border border-gray-300 rounded-md"
                 required
               >
                 <option value="">Select service</option>
@@ -2599,18 +2944,18 @@ export default function Appointments() {
               </select>
             </div>
             <div>
-              <label className="block text-xs font-medium mb-1">
+              <label className="block text-xs font-medium mb-0.5">
                 Reason for Visit
               </label>
               <textarea
                 name="reasonForVisit"
                 value={newAppointment.reasonForVisit}
                 onChange={handleNewAppointmentChange}
-                className="w-full p-2 border border-gray-300 rounded-md"
+                className="w-full p-1.5 text-sm border border-gray-300 rounded-md"
                 rows={2}
               />
             </div>
-            <DialogFooter className="mt-2 flex justify-between w-full">
+            <DialogFooter className="mt-2 flex justify-between w-full flex-shrink-0">
               <Button
                 variant="outline"
                 type="button"
@@ -2739,7 +3084,7 @@ export default function Appointments() {
               cannot be undone.
             </p>
             {actionAppointment && (
-              <div className="bg-red-50 p-3 rounded-lg border border-red-200">
+              <div className="bg-red-50 p-3 rounded-lg border border-red-200 mb-4">
                 <div className="text-sm">
                   <div className="font-semibold text-charcoal">
                     {getPatientName(actionAppointment)}
@@ -2755,6 +3100,17 @@ export default function Appointments() {
                 </div>
               </div>
             )}
+            <div>
+              <Label htmlFor="cancelReason" className="text-sm font-medium text-charcoal mb-2 block">
+                Reason for Cancellation
+              </Label>
+              <textarea
+                id="cancelReason"
+                rows={3}
+                placeholder="Enter reason for cancellation..."
+                className="w-full p-2 text-sm border border-gray-300 rounded-md resize-none focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent"
+              />
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowCancelModal(false)}>
@@ -2762,7 +3118,14 @@ export default function Appointments() {
             </Button>
             <Button
               className="bg-red-500 hover:bg-red-600 text-white"
-              onClick={cancelAppointmentConfirmed}
+              onClick={() => {
+                const reasonInput = document.getElementById("cancelReason");
+                if (!reasonInput || !reasonInput.value.trim()) {
+                  toast.error("Please provide a reason for cancellation");
+                  return;
+                }
+                cancelAppointmentConfirmed();
+              }}
             >
               <X className="h-4 w-4 mr-2" />
               Cancel Appointment
@@ -2835,22 +3198,19 @@ export default function Appointments() {
                           <div className="flex items-center gap-1">
                             {getStatusIcon(appointment.status)}
                             <span
-                              className={`px-2 py-0.5 text-xs font-medium rounded-full ${
-                                appointment.status.toLowerCase() ===
-                                  "confirmed" ||
-                                appointment.status.toLowerCase() === "completed"
-                                  ? "bg-green-100 text-green-700"
-                                  : appointment.status.toLowerCase() ===
-                                    "rescheduled"
-                                  ? "bg-yellow-100 text-yellow-800"
-                                  : appointment.status.toLowerCase() ===
-                                    "cancelled"
-                                  ? "bg-red-100 text-red-700"
-                                  : "bg-gray-100 text-gray-700"
-                              }`}
+                              className={`px-2 py-0.5 text-xs font-medium rounded-full ${getStatusBadgeClass(
+                                appointment.status
+                              )}`}
                             >
-                              {appointment.status.charAt(0).toUpperCase() +
-                                appointment.status.slice(1)}
+                              {(() => {
+                                const status = appointment.status?.toLowerCase();
+                                if (status === "cancellation_pending") {
+                                  return "Cancellation Pending";
+                                } else if (status === "reschedule_pending") {
+                                  return "Reschedule Pending";
+                                }
+                                return appointment.status.charAt(0).toUpperCase() + appointment.status.slice(1);
+                              })()}
                             </span>
                           </div>
                         </div>
@@ -2894,6 +3254,41 @@ export default function Appointments() {
                             <p className="text-gray-600 text-sm italic bg-gray-50 p-2 rounded mt-1">
                               "{appointment.reasonForVisit}"
                             </p>
+                          </div>
+                        )}
+
+                        {/* Patient Cancellation Request */}
+                        {appointment.status === "cancellation_pending" && 
+                         appointment.cancellationRequest && 
+                         appointment.cancellationRequest.requestedBy && (
+                          <div className="mt-2 p-2 bg-orange-50 border border-orange-200 rounded text-xs">
+                            <p className="font-semibold text-orange-800 mb-1">
+                              Patient Cancellation Request
+                            </p>
+                            <p className="text-orange-700">
+                              <strong>Reason:</strong> {appointment.cancellationRequest.reason || "No reason provided"}
+                            </p>
+                            <p className="text-orange-600 text-xs mt-1">
+                              Requested on {new Date(appointment.cancellationRequest.requestedAt).toLocaleDateString()}
+                            </p>
+                            <div className="flex gap-2 mt-2">
+                              <Button
+                                size="sm"
+                                className="bg-green-600 hover:bg-green-700 text-white text-xs"
+                                onClick={() => handleApproveCancellation(appointment)}
+                              >
+                                <CheckCircle className="h-3 w-3 mr-1" />
+                                Approve
+                              </Button>
+                              <Button
+                                size="sm"
+                                className="bg-red-500 hover:bg-red-600 text-white text-xs"
+                                onClick={() => handleRejectCancellation(appointment)}
+                              >
+                                <X className="h-3 w-3 mr-1" />
+                                Reject
+                              </Button>
+                            </div>
                           </div>
                         )}
                       </div>

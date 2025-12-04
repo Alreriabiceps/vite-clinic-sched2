@@ -31,11 +31,6 @@ export default function PatientProfile() {
       city: '',
       province: '',
       zipCode: ''
-    },
-    emergencyContact: {
-      name: '',
-      relationship: '',
-      phoneNumber: ''
     }
   });
   
@@ -52,7 +47,6 @@ export default function PatientProfile() {
     new: false,
     confirm: false
   });
-  const [activeTab, setActiveTab] = useState('profile'); // profile, password
 
   useEffect(() => {
     if (!patient && !authLoading) {
@@ -72,11 +66,6 @@ export default function PatientProfile() {
           city: patient.address?.city || '',
           province: patient.address?.province || '',
           zipCode: patient.address?.zipCode || ''
-        },
-        emergencyContact: {
-          name: patient.emergencyContact?.name || '',
-          relationship: patient.emergencyContact?.relationship || '',
-          phoneNumber: patient.emergencyContact?.phoneNumber || ''
         }
       });
     }
@@ -175,15 +164,6 @@ export default function PatientProfile() {
     }));
   };
 
-  const handleEmergencyContactChange = (field, value) => {
-    setProfileForm(prev => ({
-      ...prev,
-      emergencyContact: {
-        ...prev.emergencyContact,
-        [field]: value
-      }
-    }));
-  };
 
   const togglePasswordVisibility = (field) => {
     setShowPasswords(prev => ({
@@ -234,28 +214,8 @@ export default function PatientProfile() {
       </header>
 
       <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Tab Navigation */}
-        <div className="mb-6">
-          <div className="flex gap-2">
-            <Button
-              variant={activeTab === 'profile' ? 'default' : 'outline'}
-              onClick={() => setActiveTab('profile')}
-            >
-              <User className="h-4 w-4 mr-2" />
-              Personal Information
-            </Button>
-            <Button
-              variant={activeTab === 'password' ? 'default' : 'outline'}
-              onClick={() => setActiveTab('password')}
-            >
-              <Shield className="h-4 w-4 mr-2" />
-              Change Password
-            </Button>
-          </div>
-        </div>
-
-        {/* Profile Information Tab */}
-        {activeTab === 'profile' && (
+        <div className="space-y-6">
+          {/* Profile Information */}
           <form onSubmit={handleProfileSubmit} className="space-y-6">
             {/* Basic Information */}
             <Card>
@@ -395,51 +355,6 @@ export default function PatientProfile() {
               </CardContent>
             </Card>
 
-            {/* Emergency Contact */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Phone className="h-5 w-5 text-clinic-600" />
-                  Emergency Contact
-                </CardTitle>
-                <CardDescription>
-                  Add an emergency contact for medical situations
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div>
-                  <Label htmlFor="emergencyName">Contact Name</Label>
-                  <Input
-                    id="emergencyName"
-                    value={profileForm.emergencyContact.name}
-                    onChange={(e) => handleEmergencyContactChange('name', e.target.value)}
-                    placeholder="Enter emergency contact name"
-                  />
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <Label htmlFor="emergencyRelationship">Relationship</Label>
-                    <Input
-                      id="emergencyRelationship"
-                      value={profileForm.emergencyContact.relationship}
-                      onChange={(e) => handleEmergencyContactChange('relationship', e.target.value)}
-                      placeholder="e.g., Spouse, Parent, Sibling"
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="emergencyPhone">Phone Number</Label>
-                    <Input
-                      id="emergencyPhone"
-                      value={profileForm.emergencyContact.phoneNumber}
-                      onChange={(e) => handleEmergencyContactChange('phoneNumber', e.target.value)}
-                      placeholder="Enter emergency contact phone"
-                    />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
             <div className="flex justify-end">
               <Button type="submit" disabled={loading}>
                 {loading ? (
@@ -456,10 +371,11 @@ export default function PatientProfile() {
               </Button>
             </div>
           </form>
-        )}
 
-        {/* Password Change Tab */}
-        {activeTab === 'password' && (
+          {/* Divider */}
+          <div className="border-t border-gray-200 my-6"></div>
+
+          {/* Password Change */}
           <form onSubmit={handlePasswordSubmit} className="space-y-6">
             <Card>
               <CardHeader>
@@ -563,7 +479,7 @@ export default function PatientProfile() {
               </Button>
             </div>
           </form>
-        )}
+        </div>
       </main>
     </div>
   );

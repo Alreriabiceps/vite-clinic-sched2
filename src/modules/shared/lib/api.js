@@ -122,6 +122,8 @@ export const appointmentsAPI = {
   updateDiagnosis: (id, diagnosis) => api.patch(`/appointments/${id}/diagnosis`, { diagnosis }),
   updateStatus: (id, data) => api.patch(`/appointments/${id}/status`, data),
   reschedule: (id, data) => api.patch(`/appointments/${id}/reschedule`, data),
+  approveCancellation: (id, data) => api.patch(`/appointments/${id}/approve-cancellation`, data),
+  rejectCancellation: (id, data) => api.patch(`/appointments/${id}/reject-cancellation`, data),
   getDailyAppointments: (doctorName, date) => 
     api.get('/appointments/daily', { 
       params: { doctorName, date } 
@@ -139,7 +141,11 @@ export const patientsAPI = {
   update: (patientId, data) => api.put(`/patients/${patientId}`, data),
   delete: (patientId) => api.delete(`/patients/${patientId}`),
   addImmunization: (patientId, data) => api.post(`/patients/${patientId}/immunizations`, data),
+  updateImmunization: (patientId, immunizationId, data) => api.put(`/patients/${patientId}/immunizations/${immunizationId}`, data),
+  deleteImmunization: (patientId, immunizationId) => api.delete(`/patients/${patientId}/immunizations/${immunizationId}`),
   addConsultation: (patientId, data) => api.post(`/patients/${patientId}/consultations`, data),
+  updateConsultation: (patientId, consultationId, data) => api.put(`/patients/${patientId}/consultations/${consultationId}`, data),
+  deleteConsultation: (patientId, consultationId) => api.delete(`/patients/${patientId}/consultations/${consultationId}`),
   addNote: (patientId, data) => api.post(`/patients/${patientId}/notes`, data),
 };
 
@@ -157,6 +163,12 @@ export const availabilityAPI = {
   getSlots: (params) => api.get('/availability/slots', { params }),
   getSummary: (params) => api.get('/availability/summary', { params }),
   checkSlot: (params) => api.get('/availability/check-slot', { params }),
+};
+
+// Settings API
+export const settingsAPI = {
+  getClinicSettings: () => api.get('/settings/clinic'),
+  updateClinicSettings: (data) => api.put('/settings/clinic', data),
 };
 
 // Helper function to handle API errors
@@ -196,6 +208,9 @@ export const patientBookingAPI = {
   cancelAppointment: (appointmentId, data) => patientApi.put(`/patient/booking/cancel-appointment/${appointmentId}`, data),
   requestCancellation: (appointmentId, data) => patientApi.post(`/patient/booking/request-cancellation/${appointmentId}`, data),
   requestReschedule: (appointmentId, data) => patientApi.post(`/patient/booking/request-reschedule/${appointmentId}`, data),
+  acceptReschedule: (appointmentId) => patientApi.post(`/patient/booking/accept-reschedule/${appointmentId}`),
+  acceptCancellation: (appointmentId) => patientApi.post(`/patient/booking/accept-cancellation/${appointmentId}`),
+  markNoShow: (appointmentId) => patientApi.post(`/patient/booking/mark-no-show/${appointmentId}`),
 };
 
 // Helper function to extract data from API response
