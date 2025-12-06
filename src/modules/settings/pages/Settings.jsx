@@ -1,4 +1,4 @@
-import { Card, CardContent, CardHeader, CardTitle, Button, Input, useAuth, authAPI, settingsAPI, handleAPIError, toast } from '../../shared';
+import { Card, CardContent, CardHeader, CardTitle, Button, Input, useAuth, authAPI, settingsAPI, handleAPIError, extractData, toast } from '../../shared';
 import React, { useState, useEffect } from 'react';
 import { User, Mail, Calendar, Shield } from 'lucide-react';
 
@@ -54,16 +54,35 @@ const Settings = () => {
   const [clinicLoading, setClinicLoading] = useState(false);
   const [clinicMessage, setClinicMessage] = useState('');
 
-  // Load clinic settings from localStorage on mount
+  // Load clinic settings from API or localStorage on mount
   useEffect(() => {
-    const savedSettings = localStorage.getItem('clinic_settings');
-    if (savedSettings) {
+    const loadClinicSettings = async () => {
       try {
-        setClinicSettings(JSON.parse(savedSettings));
-      } catch (error) {
-        console.error('Error loading clinic settings:', error);
+        // Try to load from API first
+        const response = await settingsAPI.getClinicSettings();
+        const data = extractData(response);
+        if (data) {
+          setClinicSettings(data);
+          // Also save to localStorage as backup
+          localStorage.setItem('clinic_settings', JSON.stringify(data));
+          return;
+        }
+      } catch (apiError) {
+        console.log('API endpoint not available, trying localStorage');
       }
-    }
+      
+      // Fallback to localStorage if API fails
+      const savedSettings = localStorage.getItem('clinic_settings');
+      if (savedSettings) {
+        try {
+          setClinicSettings(JSON.parse(savedSettings));
+        } catch (error) {
+          console.error('Error loading clinic settings:', error);
+        }
+      }
+    };
+    
+    loadClinicSettings();
   }, []);
 
   const handlePasswordChange = async (e) => {
@@ -277,6 +296,9 @@ const Settings = () => {
         // API might not be implemented yet, that's okay
         console.log('API endpoint not available, saved to localStorage');
       }
+      
+      // Dispatch custom event to notify other components of settings update
+      window.dispatchEvent(new Event('clinicSettingsUpdated'));
       
       setClinicMessage('Clinic settings saved successfully');
       toast.success('Clinic settings saved successfully');

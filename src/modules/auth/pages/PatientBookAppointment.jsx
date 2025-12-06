@@ -13,6 +13,7 @@ import {
   MapPin,
   Phone
 } from 'lucide-react';
+
 export default function PatientBookAppointment() {
   const navigate = useNavigate();
   const { patient, loading: authLoading } = usePatientAuth();
@@ -278,68 +279,55 @@ export default function PatientBookAppointment() {
             <LoadingSpinner />
             <span className="ml-2 text-gray-600">Checking existing appointments...</span>
           </div>
-        ) : existingAppointment ? (
-          <Card className="mb-8">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-orange-600">
-                <Calendar className="h-5 w-5" />
-                Existing Appointment Found
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
-                <div className="flex items-start gap-3">
-                  <div className="p-2 bg-orange-100 rounded-full">
-                    <Calendar className="h-5 w-5 text-orange-600" />
-                  </div>
-                  <div className="flex-1">
-                    <h4 className="font-medium text-orange-900 mb-2">
-                      You already have a pending appointment
-                    </h4>
-                    <div className="text-sm text-orange-800 space-y-1">
-                      <p><strong>Doctor:</strong> {existingAppointment.doctorName}</p>
-                      <p><strong>Date:</strong> {new Date(existingAppointment.appointmentDate).toLocaleDateString()}</p>
-                      <p><strong>Time:</strong> {existingAppointment.appointmentTime}</p>
-                      <p><strong>Status:</strong> <span className="capitalize">{existingAppointment.status}</span></p>
-                    </div>
-                    <p className="text-sm text-orange-700 mt-3">
-                      Please complete or cancel your current appointment before booking a new one.
-                    </p>
-                    <div className="mt-4 flex gap-3">
-                      <Button 
-                        variant="outline" 
-                        size="sm"
-                        onClick={() => navigate('/patient/appointments')}
-                        className="border-orange-300 text-orange-700 hover:bg-orange-50"
-                      >
-                        View My Appointments
-                      </Button>
-                      <Button 
-                        variant="outline" 
-                        size="sm"
-                        onClick={checkExistingAppointments}
-                        className="border-blue-300 text-blue-700 hover:bg-blue-50"
-                      >
-                        Refresh Status
-                      </Button>
-                      <Button 
-                        variant="outline" 
-                        size="sm"
-                        onClick={() => navigate('/patient/dashboard')}
-                        className="border-gray-300"
-                      >
-                        Back to Dashboard
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
         ) : (
-          <form onSubmit={handleSubmit} className="space-y-8">
-          {/* Step 1: Select Patient Type */}
-          <Card>
+          <>
+            {/* Show warning if there's an existing appointment, but don't block */}
+            {existingAppointment && (
+              <Card className="mb-8 bg-yellow-50 border-yellow-200">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-yellow-800">
+                    <Calendar className="h-5 w-5" />
+                    Existing Appointment Notice
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                    <div className="flex items-start gap-3">
+                      <div className="p-2 bg-yellow-100 rounded-full">
+                        <Calendar className="h-5 w-5 text-yellow-700" />
+                      </div>
+                      <div className="flex-1">
+                        <h4 className="font-medium text-yellow-900 mb-2">
+                          You have a pending appointment
+                        </h4>
+                        <div className="text-sm text-yellow-800 space-y-1">
+                          <p><strong>Doctor:</strong> {existingAppointment.doctorName || 'Unknown'}</p>
+                          <p><strong>Date:</strong> {new Date(existingAppointment.appointmentDate).toLocaleDateString()}</p>
+                          <p><strong>Time:</strong> {existingAppointment.appointmentTime}</p>
+                          <p><strong>Status:</strong> <span className="capitalize">{existingAppointment.status}</span></p>
+                        </div>
+                        <p className="text-sm text-yellow-700 mt-3">
+                          You can still book additional appointments. Please manage your appointments from the appointments page.
+                        </p>
+                        <div className="mt-4 flex gap-3">
+                          <Button 
+                            variant="outline" 
+                            size="sm"
+                            onClick={() => navigate('/patient/appointments')}
+                            className="border-yellow-300 text-yellow-700 hover:bg-yellow-100"
+                          >
+                            View My Appointments
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+            <form onSubmit={handleSubmit} className="space-y-8">
+                  {/* Step 1: Select Patient Type */}
+              <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <User className="h-5 w-5 text-clinic-600" />
@@ -428,11 +416,11 @@ export default function PatientBookAppointment() {
                   </div>
                 </div>
               )}
-            </CardContent>
-          </Card>
+              </CardContent>
+              </Card>
 
-          {/* Step 2: Patient Information */}
-          <Card>
+              {/* Step 2: Patient Information */}
+              <Card>
             <CardHeader>
               <CardTitle>Step 2: Patient Information</CardTitle>
             </CardHeader>
@@ -496,11 +484,11 @@ export default function PatientBookAppointment() {
                   </div>
                 </div>
               </div>
-            </CardContent>
-          </Card>
+              </CardContent>
+              </Card>
 
-          {/* Step 3: Select Doctor */}
-          <Card>
+              {/* Step 3: Select Doctor */}
+              <Card>
             <CardHeader>
               <CardTitle>Step 3: Select Doctor</CardTitle>
             </CardHeader>
@@ -557,12 +545,12 @@ export default function PatientBookAppointment() {
                   ))}
                 </div>
               )}
-            </CardContent>
-          </Card>
+              </CardContent>
+              </Card>
 
-          {/* Step 4: Select Date and Time */}
-          {selectedDoctor && (
-            <Card>
+              {/* Step 4: Select Date and Time */}
+              {selectedDoctor && (
+                <Card>
               <CardHeader>
                 <CardTitle>Step 4: Select Date and Time</CardTitle>
                 <CardDescription>
@@ -671,67 +659,68 @@ export default function PatientBookAppointment() {
                     )}
                   </div>
                 )}
-              </CardContent>
-            </Card>
-          )}
+                </CardContent>
+                </Card>
+              )}
 
-          {/* Booking Summary & Submit */}
-          {selectedDoctor && selectedDate && selectedSlot && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Booking Summary</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="bg-gray-50 p-4 rounded-lg space-y-2">
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Doctor:</span>
-                    <span className="font-medium">{selectedDoctorInfo?.name?.startsWith('Dr.') ? selectedDoctorInfo.name : `Dr. ${selectedDoctorInfo?.name}`}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Specialty:</span>
-                    <span className="font-medium">{selectedDoctorInfo?.specialty}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Patient:</span>
-                    <span className="font-medium">{formData.patientName}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Date:</span>
-                    <span className="font-medium">{new Date(selectedDate).toLocaleDateString()}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Time:</span>
-                    <span className="font-medium">{selectedSlot}</span>
-                  </div>
-                  {formData.reason && (
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">Reason:</span>
-                      <span className="font-medium">{formData.reason}</span>
+              {/* Booking Summary & Submit */}
+              {selectedDoctor && selectedDate && selectedSlot && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Booking Summary</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="bg-gray-50 p-4 rounded-lg space-y-2">
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Doctor:</span>
+                        <span className="font-medium">{selectedDoctorInfo?.name?.startsWith('Dr.') ? selectedDoctorInfo.name : `Dr. ${selectedDoctorInfo?.name}`}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Specialty:</span>
+                        <span className="font-medium">{selectedDoctorInfo?.specialty}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Patient:</span>
+                        <span className="font-medium">{formData.patientName}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Date:</span>
+                        <span className="font-medium">{new Date(selectedDate).toLocaleDateString()}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Time:</span>
+                        <span className="font-medium">{selectedSlot}</span>
+                      </div>
+                      {formData.reason && (
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">Reason:</span>
+                          <span className="font-medium">{formData.reason}</span>
+                        </div>
+                      )}
                     </div>
-                  )}
-                </div>
 
-                <Button 
-                  type="submit" 
-                  className="w-full" 
-                  size="lg"
-                  disabled={bookingLoading}
-                >
-                  {bookingLoading ? (
-                    <>
-                      <LoadingSpinner size="sm" />
-                      Booking Appointment...
-                    </>
-                  ) : (
-                    'Confirm Booking'
-                  )}
-                </Button>
-              </CardContent>
-            </Card>
-          )}
-        </form>
+                    <Button 
+                      type="submit" 
+                      className="w-full" 
+                      size="lg"
+                      disabled={bookingLoading}
+                    >
+                      {bookingLoading ? (
+                        <>
+                          <LoadingSpinner size="sm" />
+                          Booking Appointment...
+                        </>
+                      ) : (
+                        'Confirm Booking'
+                      )}
+                    </Button>
+                  </CardContent>
+                </Card>
+              )}
+            </form>
+          </>
         )}
       </main>
     </div>
   );
-} 
+}

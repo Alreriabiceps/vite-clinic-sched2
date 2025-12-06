@@ -31,13 +31,16 @@ const usePatientAuthStore = create((set, get) => ({
         error: null,
       });
     } catch (error) {
-      console.error("Patient auth initialization error:", error);
+      // Only log unexpected errors (not 401 which is expected for invalid/expired tokens)
+      if (error.response?.status !== 401 && error.response?.status !== 403) {
+        console.error("Patient auth initialization error:", error);
+      }
       localStorage.removeItem("patient_token");
       localStorage.removeItem("patient_refresh_token");
       set({
         patient: null,
         loading: false,
-        error: handleAPIError(error),
+        error: null, // Don't set error for expected auth failures
       });
     }
   },

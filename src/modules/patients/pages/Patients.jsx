@@ -398,9 +398,9 @@ export default function Patients() {
       <tr
         ref={setNodeRef}
         style={style}
-        className="border-b border-gray-100 hover:bg-gray-50"
+        className="hover:bg-gray-50"
       >
-        <td className="px-0.5 py-1 border-r border-gray-100">
+        <td className="px-1 py-2 border-r border-gray-100">
           <div className="flex items-center gap-1">
             <button
               {...attributes}
@@ -409,35 +409,35 @@ export default function Patients() {
             >
               <GripVertical className="h-3 w-3" />
             </button>
-            <span className="text-xs text-gray-900">
+            <span className="text-gray-900">
               {patient.patientId || patient.patientNumber || "N/A"}
             </span>
           </div>
         </td>
-        <td className="px-0.5 py-1 font-medium border-r border-gray-100 truncate text-xs">
+        <td className="px-1 py-2 font-medium border-r border-gray-100 truncate">
           {getPatientDisplayName(patient)}
         </td>
-        <td className="px-0.5 py-1 truncate border-r border-gray-100 text-xs text-gray-600">
+        <td className="px-1 py-2 truncate border-r border-gray-100 text-gray-600">
           {getContactInfo(patient)}
         </td>
-        <td className="px-0.5 py-1 border-r border-gray-100 text-xs text-gray-600">
+        <td className="px-1 py-2 border-r border-gray-100 text-gray-600">
           {getLastVisit(patient)}
         </td>
-        <td className="px-0.5 py-1 border-r border-gray-100">
+        <td className="px-1 py-2 border-r border-gray-100">
           <span
-            className={`px-1.5 py-0.5 rounded-full text-xs font-medium ${getStatusBadgeColor(
+            className={`px-2 py-0.5 rounded-full text-xs ${getStatusBadgeColor(
               patient.status
             )}`}
           >
             {patient.status || "New"}
           </span>
         </td>
-        <td className="px-0.5 py-1">
-          <div className="flex gap-1">
+        <td className="px-1 py-2">
+          <div className="flex gap-1.5">
             <Button
               variant="outline"
               size="sm"
-              className="h-6 px-1.5 text-xs"
+              className="h-7 px-2"
               onClick={() => navigate(`/patients/${patient._id}`)}
             >
               View
@@ -445,7 +445,7 @@ export default function Patients() {
             <Button
               variant="outline"
               size="sm"
-              className="h-6 px-1.5 text-xs"
+              className="h-7 px-2"
               onClick={() => navigate(`/patients/${patient._id}`)}
             >
               Edit
@@ -620,11 +620,11 @@ export default function Patients() {
       </div>
 
       {/* Patient List */}
-      <Card className="bg-white border-gray-200">
+      <Card className="bg-white border-soft-olive-200">
         <CardHeader>
           <CardTitle className="text-lg font-bold text-gray-900">All Patients</CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="p-0 overflow-auto">
           {isLoading ? (
             <div className="flex items-center justify-center py-12">
               <LoadingSpinner size="lg" />
@@ -661,45 +661,43 @@ export default function Patients() {
                 onDragEnd={handleDragEnd}
               >
                 <div className="overflow-x-auto">
-                  <table ref={tableRef} className="text-sm border-collapse" style={{ tableLayout: 'fixed' }}>
+                  <table ref={tableRef} className="min-w-full text-sm border-collapse">
                     <colgroup>
-                      <col style={{ width: `${columnWidths[0]}px`, minWidth: '5px', maxWidth: 'none' }} />
-                      <col style={{ width: `${columnWidths[1]}px`, minWidth: '5px', maxWidth: 'none' }} />
-                      <col style={{ width: `${columnWidths[2]}px`, minWidth: '5px', maxWidth: 'none' }} />
-                      <col style={{ width: `${columnWidths[3]}px`, minWidth: '5px', maxWidth: 'none' }} />
-                      <col style={{ width: `${columnWidths[4]}px`, minWidth: '5px', maxWidth: 'none' }} />
-                      <col style={{ width: `${columnWidths[5]}px`, minWidth: '5px', maxWidth: 'none' }} />
+                      <col style={{ width: `${columnWidths[0]}px`, minWidth: '80px' }} />
+                      <col style={{ width: `${columnWidths[1]}px`, minWidth: '120px' }} />
+                      <col style={{ width: `${columnWidths[2]}px`, minWidth: '150px' }} />
+                      <col style={{ width: `${columnWidths[3]}px`, minWidth: '120px' }} />
+                      <col style={{ width: `${columnWidths[4]}px`, minWidth: '90px' }} />
+                      <col style={{ width: `${columnWidths[5]}px`, minWidth: '120px' }} />
                     </colgroup>
                     <thead className="bg-gray-50 text-charcoal">
                       <tr>
-                        <th className="px-0.5 py-1 text-left relative group text-xs font-semibold">
+                        <th className="px-1 py-2 text-left relative group">
                           <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-blue-300 group-hover:bg-blue-200 transition-colors" 
                                onMouseDown={(e) => handleResize(e, 0)}></div>
                           Patient ID
                         </th>
-                        <th className="px-0.5 py-1 text-left relative group text-xs font-semibold">
+                        <th className="px-1 py-2 text-left relative group">
                           <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-blue-300 group-hover:bg-blue-200 transition-colors" 
                                onMouseDown={(e) => handleResize(e, 1)}></div>
                           Name
                         </th>
-                        <th className="px-0.5 py-1 text-left relative group text-xs font-semibold">
+                        <th className="px-1 py-2 text-left relative group">
                           <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-blue-300 group-hover:bg-blue-200 transition-colors" 
                                onMouseDown={(e) => handleResize(e, 2)}></div>
                           Contact
                         </th>
-                        <th className="px-0.5 py-1 text-left relative group text-xs font-semibold">
+                        <th className="px-1 py-2 text-left relative group">
                           <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-blue-300 group-hover:bg-blue-200 transition-colors" 
                                onMouseDown={(e) => handleResize(e, 3)}></div>
                           Last Visit
                         </th>
-                        <th className="px-0.5 py-1 text-left relative group text-xs font-semibold">
+                        <th className="px-1 py-2 text-left relative group">
                           <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-blue-300 group-hover:bg-blue-200 transition-colors" 
                                onMouseDown={(e) => handleResize(e, 4)}></div>
                           Status
                         </th>
-                        <th className="px-0.5 py-1 text-left relative group text-xs font-semibold">
-                          <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-blue-300 group-hover:bg-blue-200 transition-colors" 
-                               onMouseDown={(e) => handleResize(e, 5)}></div>
+                        <th className="px-1 py-2 text-left relative">
                           Actions
                         </th>
                       </tr>

@@ -32,13 +32,16 @@ const useAuthStore = create((set, get) => ({
         error: null,
       });
     } catch (error) {
-      console.error("Auth initialization error:", error);
+      // Only log unexpected errors (not 401 which is expected for invalid/expired tokens)
+      if (error.response?.status !== 401 && error.response?.status !== 403) {
+        console.error("Auth initialization error:", error);
+      }
       localStorage.removeItem("clinic_token");
       localStorage.removeItem("clinic_refresh_token");
       set({
         user: null,
         loading: false,
-        error: handleAPIError(error),
+        error: null, // Don't set error for expected auth failures
       });
     }
   },

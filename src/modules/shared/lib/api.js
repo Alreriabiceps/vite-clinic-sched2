@@ -10,6 +10,48 @@ const API_BASE_URL = import.meta.env.VITE_API_URL ||
 const normalizedURL = API_BASE_URL.endsWith('/api') ? API_BASE_URL : `${API_BASE_URL}/api`;
 const FINAL_API_URL = normalizedURL;
 
+// Request throttling: Track pending requests to prevent duplicates
+const pendingRequests = new Map();
+const REQUEST_COOLDOWN = 1000; // 1 second cooldown between identical requests
+
+// Generate a unique key for a request
+const getRequestKey = (config) => {
+  return `${config.method?.toUpperCase()}_${config.url}_${JSON.stringify(config.params || {})}`;
+};
+
+// Throttle interceptor to prevent duplicate requests
+const throttleInterceptor = (config) => {
+  const requestKey = getRequestKey(config);
+  const now = Date.now();
+  
+  // Check if same request was made recently
+  if (pendingRequests.has(requestKey)) {
+    const lastRequestTime = pendingRequests.get(requestKey);
+    const timeSinceLastRequest = now - lastRequestTime;
+    
+    if (timeSinceLastRequest < REQUEST_COOLDOWN) {
+      // Request is too soon, create an abort controller to cancel it
+      const controller = new AbortController();
+      controller.abort();
+      config.signal = controller.signal;
+      // Return config - axios will handle the aborted signal
+      return config;
+    }
+  }
+  
+  // Update last request time
+  pendingRequests.set(requestKey, now);
+  
+  // Clean up old entries (older than 5 seconds)
+  for (const [key, time] of pendingRequests.entries()) {
+    if (now - time > 5000) {
+      pendingRequests.delete(key);
+    }
+  }
+  
+  return config;
+};
+
 // Debug logging
 console.log('API Configuration:', {
   MODE: import.meta.env.MODE,
@@ -24,6 +66,11 @@ const api = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
+});
+
+// Request interceptor for throttling (runs first)
+api.interceptors.request.use(throttleInterceptor, (error) => {
+  return Promise.reject(error);
 });
 
 // Request interceptor to add staff auth token
@@ -65,6 +112,11 @@ const patientApi = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
+});
+
+// Request interceptor for throttling (runs first)
+patientApi.interceptors.request.use(throttleInterceptor, (error) => {
+  return Promise.reject(error);
 });
 
 // Request interceptor to add patient auth token
@@ -209,6 +261,7 @@ export const patientBookingAPI = {
   requestCancellation: (appointmentId, data) => patientApi.post(`/patient/booking/request-cancellation/${appointmentId}`, data),
   requestReschedule: (appointmentId, data) => patientApi.post(`/patient/booking/request-reschedule/${appointmentId}`, data),
   acceptReschedule: (appointmentId) => patientApi.post(`/patient/booking/accept-reschedule/${appointmentId}`),
+  cancelReschedule: (appointmentId) => patientApi.post(`/patient/booking/cancel-reschedule/${appointmentId}`),
   acceptCancellation: (appointmentId) => patientApi.post(`/patient/booking/accept-cancellation/${appointmentId}`),
   markNoShow: (appointmentId) => patientApi.post(`/patient/booking/mark-no-show/${appointmentId}`),
 };

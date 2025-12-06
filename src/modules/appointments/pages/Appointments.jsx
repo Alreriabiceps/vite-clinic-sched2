@@ -8,6 +8,7 @@ import {
   LoadingSpinner,
   appointmentsAPI,
   patientsAPI,
+  settingsAPI,
   extractData,
   handleAPIError,
   toast,
@@ -291,7 +292,8 @@ export default function Appointments() {
   // Calendar current view (kept for calendar mode)
   // Removed unused currentView state (calendar is fixed to month)
   const [currentDate, setCurrentDate] = useState(new Date());
-  const [doctorFilter, setDoctorFilter] = useState(allDoctorNames);
+  const [doctorFilter, setDoctorFilter] = useState([]); // Empty array = show all doctors
+  const [clinicSettings, setClinicSettings] = useState(null);
   const [showRescheduleModal, setShowRescheduleModal] = useState(false);
   const [showDetailsModal, setShowDetailsModal] = useState(false);
   const [selectedAppointment, setSelectedAppointment] = useState(null);
@@ -320,7 +322,9 @@ export default function Appointments() {
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [actionAppointment, setActionAppointment] = useState(null);
   const [selectedRescheduleDate, setSelectedRescheduleDate] = useState("");
-  const [rescheduleCalendarMonth, setRescheduleCalendarMonth] = useState(new Date());
+  const [rescheduleCalendarMonth, setRescheduleCalendarMonth] = useState(
+    new Date()
+  );
 
   // Modal for showing appointments on a specific date
   const [showDateModal, setShowDateModal] = useState(false);
@@ -329,7 +333,15 @@ export default function Appointments() {
 
   // Table column resizing
   const [columnWidths, setColumnWidths] = useState({
-    0: 80, 1: 100, 2: 180, 3: 200, 4: 180, 5: 90, 6: 100, 7: 110, 8: 140
+    0: 80,
+    1: 100,
+    2: 180,
+    3: 200,
+    4: 180,
+    5: 90,
+    6: 100,
+    7: 110,
+    8: 140,
   });
   const [isResizing, setIsResizing] = useState(false);
   const [resizeColumn, setResizeColumn] = useState(null);
@@ -344,48 +356,48 @@ export default function Appointments() {
     const handleMouseMove = (e) => {
       const diff = e.pageX - startX;
       const newWidth = Math.max(60, startWidth + diff);
-      setColumnWidths(prev => ({
+      setColumnWidths((prev) => ({
         ...prev,
-        [columnIndex]: newWidth
+        [columnIndex]: newWidth,
       }));
     };
 
     const handleMouseUp = () => {
       setIsResizing(false);
       setResizeColumn(null);
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
+      document.removeEventListener("mousemove", handleMouseMove);
+      document.removeEventListener("mouseup", handleMouseUp);
     };
 
-    document.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('mouseup', handleMouseUp);
+    document.addEventListener("mousemove", handleMouseMove);
+    document.addEventListener("mouseup", handleMouseUp);
   };
 
   // Helper function to add 30 minutes to a time string
   const add30Minutes = (timeString) => {
     // Parse time string like "01:00 PM" or "09:30 AM"
-    const [time, period] = timeString.split(' ');
-    const [hours, minutes] = time.split(':').map(Number);
-    
+    const [time, period] = timeString.split(" ");
+    const [hours, minutes] = time.split(":").map(Number);
+
     let totalMinutes = hours * 60 + minutes;
-    if (period === 'PM' && hours !== 12) totalMinutes += 12 * 60;
-    if (period === 'AM' && hours === 12) totalMinutes -= 12 * 60;
-    
+    if (period === "PM" && hours !== 12) totalMinutes += 12 * 60;
+    if (period === "AM" && hours === 12) totalMinutes -= 12 * 60;
+
     // Add 30 minutes
     totalMinutes += 30;
-    
+
     // Convert back to 12-hour format
     let newHours = Math.floor(totalMinutes / 60);
     const newMinutes = totalMinutes % 60;
-    
-    let newPeriod = 'AM';
+
+    let newPeriod = "AM";
     if (newHours >= 12) {
-      newPeriod = 'PM';
+      newPeriod = "PM";
       if (newHours > 12) newHours -= 12;
     }
     if (newHours === 0) newHours = 12;
-    
-    return `${newHours}:${String(newMinutes).padStart(2, '0')} ${newPeriod}`;
+
+    return `${newHours}:${String(newMinutes).padStart(2, "0")} ${newPeriod}`;
   };
 
   const timeSlots = [
@@ -441,9 +453,176 @@ export default function Appointments() {
     return doctorType === "ob-gyne" ? obgyneServices : pediatricServices;
   };
 
+  // Get dynamic doctor names from settings
+  const getDoctorNames = () => {
+    if (clinicSettings) {
+      return [
+        clinicSettings.obgyneDoctor?.name || allDoctorNames[0],
+        clinicSettings.pediatrician?.name || allDoctorNames[1],
+      ];
+    }
+    return allDoctorNames;
+  };
+
+  const dynamicDoctorNames = getDoctorNames();
+
+  // Doctor name mapping helpers for flexible filtering
+  // Maps appointment doctor names to settings doctor names and vice versa
+  const mapDoctorNameToSettings = (appointmentDoctorName) => {
+    if (!appointmentDoctorName || !clinicSettings) {
+      return appointmentDoctorName;
+    }
+
+    // Check if appointment doctor matches OB-GYNE doctor from settings
+    const obgyneSettingsName = clinicSettings.obgyneDoctor?.name;
+    if (obgyneSettingsName) {
+      // Check if appointment doctor name contains OB-GYNE doctor name or vice versa
+      if (
+        appointmentDoctorName.includes(obgyneSettingsName) ||
+        obgyneSettingsName.includes(appointmentDoctorName) ||
+        appointmentDoctorName.toLowerCase().includes("maria") ||
+        appointmentDoctorName.toLowerCase().includes("ob") ||
+        appointmentDoctorName.toLowerCase().includes("ob-gyne")
+      ) {
+        return obgyneSettingsName;
+      }
+    }
+
+    // Check if appointment doctor matches Pediatric doctor from settings
+    const pediatricSettingsName = clinicSettings.pediatrician?.name;
+    if (pediatricSettingsName) {
+      // Check if appointment doctor name contains Pediatric doctor name or vice versa
+      if (
+        appointmentDoctorName.includes(pediatricSettingsName) ||
+        pediatricSettingsName.includes(appointmentDoctorName) ||
+        appointmentDoctorName.toLowerCase().includes("shara") ||
+        appointmentDoctorName.toLowerCase().includes("pediatric") ||
+        appointmentDoctorName.toLowerCase().includes("pedia")
+      ) {
+        return pediatricSettingsName;
+      }
+    }
+
+    // Fallback: return original name if no match found
+    return appointmentDoctorName;
+  };
+
+  // Get all appointment doctor names that map to a given settings doctor name
+  const getAppointmentDoctorNamesForSettingsDoctor = (settingsDoctorName) => {
+    if (!settingsDoctorName || !appointments.length) {
+      return [];
+    }
+
+    const matchingNames = [];
+    appointments.forEach((apt) => {
+      if (apt.doctorName) {
+        const mappedName = mapDoctorNameToSettings(apt.doctorName);
+        if (mappedName === settingsDoctorName) {
+          if (!matchingNames.includes(apt.doctorName)) {
+            matchingNames.push(apt.doctorName);
+          }
+        }
+      }
+    });
+
+    return matchingNames;
+  };
+
+  // Check if appointment doctor matches filter
+  const matchesDoctorFilter = (appointmentDoctorName, filter) => {
+    // If filter is empty array, show all (return true)
+    if (!filter || filter.length === 0) {
+      return true;
+    }
+
+    // If appointment has no doctor name, exclude it
+    if (!appointmentDoctorName) {
+      return false;
+    }
+
+    // Map appointment doctor name to settings doctor name
+    const mappedName = mapDoctorNameToSettings(appointmentDoctorName);
+
+    // Check if mapped name or original name is in filter
+    return (
+      filter.includes(appointmentDoctorName) ||
+      filter.includes(mappedName) ||
+      filter.some((filterName) => {
+        const filterMapped = mapDoctorNameToSettings(filterName);
+        return (
+          filterMapped === mappedName ||
+          appointmentDoctorName.includes(filterName) ||
+          filterName.includes(appointmentDoctorName)
+        );
+      })
+    );
+  };
+
+  // Fetch clinic settings only once on mount
+  useEffect(() => {
+    fetchClinicSettings();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Fetch appointments when view mode changes
   useEffect(() => {
     fetchAppointments();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [viewMode]); // Only refetch when view mode changes
+
+  // Listen for clinic settings changes
+  useEffect(() => {
+    const handleStorageChange = (e) => {
+      if (e.key === "clinic_settings" && e.newValue) {
+        try {
+          const newSettings = JSON.parse(e.newValue);
+          setClinicSettings(newSettings);
+        } catch (error) {
+          console.error("Error parsing updated clinic settings:", error);
+        }
+      }
+    };
+
+    const handleSettingsUpdated = () => {
+      fetchClinicSettings();
+    };
+
+    window.addEventListener("storage", handleStorageChange);
+    window.addEventListener("clinicSettingsUpdated", handleSettingsUpdated);
+
+    // Removed interval - settings update via events only (no polling needed)
+
+    return () => {
+      window.removeEventListener("storage", handleStorageChange);
+      window.removeEventListener(
+        "clinicSettingsUpdated",
+        handleSettingsUpdated
+      );
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const fetchClinicSettings = async () => {
+    try {
+      const response = await settingsAPI.getClinicSettings();
+      const data = extractData(response);
+      setClinicSettings(data);
+      // Don't update doctor filter here - only update when user clicks filter buttons
+    } catch (error) {
+      console.error("Error fetching clinic settings:", error);
+      // Fallback to localStorage if API fails
+      const savedSettings = localStorage.getItem("clinic_settings");
+      if (savedSettings) {
+        try {
+          const settings = JSON.parse(savedSettings);
+          setClinicSettings(settings);
+          // Don't update doctor filter here - only update when user clicks filter buttons
+        } catch (e) {
+          console.error("Error parsing localStorage settings:", e);
+        }
+      }
+    }
+  };
 
   const fetchAppointments = async () => {
     try {
@@ -451,8 +630,8 @@ export default function Appointments() {
       const _today = new Date().toISOString().split("T")[0];
 
       let params = {
-        // Fetch all appointments and filter on frontend
-        limit: 1000,
+        // Fetch all appointments - no limit to ensure all data is available
+        // Frontend will handle filtering by date range
       };
 
       const response = await appointmentsAPI.getAll(params);
@@ -460,6 +639,19 @@ export default function Appointments() {
       console.log("Fetched appointments:", data.appointments);
       if (data.appointments && data.appointments.length > 0) {
         console.log("Sample appointment structure:", data.appointments[0]);
+
+        // Extract all unique doctor names from appointments for reference
+        // Don't auto-update doctor filter - only update when user clicks filter buttons
+        // This is just for logging/debugging purposes
+        const uniqueDoctorNames = [
+          ...new Set(
+            data.appointments.map((apt) => apt.doctorName).filter(Boolean)
+          ),
+        ];
+        console.log(
+          "Available doctor names in appointments:",
+          uniqueDoctorNames
+        );
       }
       setAppointments(data.appointments || []);
     } catch (error) {
@@ -708,9 +900,9 @@ export default function Appointments() {
     if (!dateString) return "";
     // Handle both Date objects and date strings
     let date;
-    if (typeof dateString === 'string') {
+    if (typeof dateString === "string") {
       // If it's a date string like "2025-12-09", parse it as local date to avoid timezone issues
-      const [year, month, day] = dateString.split('T')[0].split('-');
+      const [year, month, day] = dateString.split("T")[0].split("-");
       date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
     } else {
       date = new Date(dateString);
@@ -740,12 +932,54 @@ export default function Appointments() {
       : "Staff";
   };
 
+  // Check if appointment date/time has passed (can be completed)
+  const canCompleteAppointment = (appointment) => {
+    if (!appointment.appointmentDate) return false;
+
+    const appointmentDate = new Date(appointment.appointmentDate);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    // Set appointment date to start of day for comparison
+    const aptDate = new Date(appointmentDate);
+    aptDate.setHours(0, 0, 0, 0);
+
+    // If appointment date is in the past, it can be completed
+    if (aptDate < today) {
+      return true;
+    }
+
+    // If appointment date is today, check if the time has passed
+    if (aptDate.getTime() === today.getTime() && appointment.appointmentTime) {
+      const now = new Date();
+      const appointmentDateTime = parseAppointmentDateTime(appointment);
+      return now.getTime() >= appointmentDateTime;
+    }
+
+    // If appointment date is in the future, cannot complete yet
+    return false;
+  };
+
   const handleDoctorFilterChange = (doctor) => {
-    setDoctorFilter((prev) =>
-      prev.includes(doctor)
-        ? prev.filter((d) => d !== doctor)
-        : [...prev, doctor]
-    );
+    // Get all appointment doctor names that map to this doctor
+    const appointmentNames = getAppointmentDoctorNamesForSettingsDoctor(doctor);
+    const namesToToggle =
+      appointmentNames.length > 0 ? appointmentNames : [doctor];
+
+    setDoctorFilter((prev) => {
+      // Check if any of the names to toggle are already in filter
+      const isCurrentlyInFilter = namesToToggle.some((name) =>
+        prev.includes(name)
+      );
+
+      if (isCurrentlyInFilter) {
+        // Remove all matching names
+        return prev.filter((d) => !namesToToggle.includes(d));
+      } else {
+        // Add all matching names
+        return [...new Set([...prev, ...namesToToggle])];
+      }
+    });
   };
 
   const visibleAppointments = appointments.filter((appointment) => {
@@ -754,7 +988,12 @@ export default function Appointments() {
       getPatientName(appointment)
         .toLowerCase()
         .includes(searchTerm.toLowerCase());
-    const doctorMatch = doctorFilter.includes(appointment.doctorName);
+
+    // Doctor filter - use flexible matching via mapping function
+    const doctorMatch = matchesDoctorFilter(
+      appointment.doctorName,
+      doctorFilter
+    );
 
     // Status filtering (exact match for segmented control)
     const matchesStatus = (() => {
@@ -769,49 +1008,137 @@ export default function Appointments() {
       );
     })();
 
-    // Date range filtering (removed redundant 'today')
-    const appointmentDate = new Date(appointment.appointmentDate);
+    // Date range filtering - "all" shows everything (past, present, future)
+    if (dateRange === "all") {
+      // No date filtering - show all appointments regardless of date
+      return searchMatch && doctorMatch && matchesStatus;
+    }
+
+    // Parse appointment date and normalize to start of day
+    const appointmentDateStr = appointment.appointmentDate;
+    if (!appointmentDateStr) {
+      return false; // Skip appointments without dates
+    }
+
+    let appointmentDate;
+    if (typeof appointmentDateStr === "string") {
+      // Handle date string format (e.g., "2025-12-09" or "2025-12-09T00:00:00.000Z")
+      const datePart = appointmentDateStr.split("T")[0];
+      const [year, month, day] = datePart.split("-");
+      appointmentDate = new Date(
+        parseInt(year),
+        parseInt(month) - 1,
+        parseInt(day)
+      );
+    } else {
+      appointmentDate = new Date(appointmentDateStr);
+    }
+
+    // Normalize to start of day
+    appointmentDate.setHours(0, 0, 0, 0);
+
     const today = new Date();
-    const matchesDateRange = (() => {
-      if (dateRange === "week") {
-        const weekStart = new Date(today);
-        weekStart.setDate(today.getDate() - today.getDay());
-        const weekEnd = new Date(weekStart);
-        weekEnd.setDate(weekStart.getDate() + 6);
-        return appointmentDate >= weekStart && appointmentDate <= weekEnd;
-      } else if (dateRange === "month") {
-        return (
-          appointmentDate.getMonth() === today.getMonth() &&
-          appointmentDate.getFullYear() === today.getFullYear()
-        );
-      }
-      return true; // 'all' date range
-    })();
+    today.setHours(0, 0, 0, 0);
+
+    let matchesDateRange = false;
+
+    if (dateRange === "week") {
+      // Get start of week (Sunday = 0)
+      const weekStart = new Date(today);
+      const dayOfWeek = today.getDay();
+      weekStart.setDate(today.getDate() - dayOfWeek);
+      weekStart.setHours(0, 0, 0, 0);
+
+      // Get end of week (Saturday)
+      const weekEnd = new Date(weekStart);
+      weekEnd.setDate(weekStart.getDate() + 6);
+      weekEnd.setHours(23, 59, 59, 999);
+
+      matchesDateRange =
+        appointmentDate >= weekStart && appointmentDate <= weekEnd;
+    } else if (dateRange === "month") {
+      // Check if appointment is in current month and year
+      matchesDateRange =
+        appointmentDate.getMonth() === today.getMonth() &&
+        appointmentDate.getFullYear() === today.getFullYear();
+    }
 
     return searchMatch && doctorMatch && matchesStatus && matchesDateRange;
   });
 
-  const sortedAppointments = [...visibleAppointments].sort(
-    (a, b) => parseAppointmentDateTime(b) - parseAppointmentDateTime(a)
-  );
+  // Sort by creation date (most recent first), then by appointment date/time
+  const sortedAppointments = [...visibleAppointments].sort((a, b) => {
+    // First, sort by createdAt (most recently created first)
+    const aCreatedAt = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+    const bCreatedAt = b.createdAt ? new Date(b.createdAt).getTime() : 0;
 
-  // Debug logging
-  console.log("Filtering results:", {
+    if (bCreatedAt !== aCreatedAt) {
+      return bCreatedAt - aCreatedAt; // Most recent first
+    }
+
+    // If same creation time, sort by appointment date/time (future appointments first)
+    return parseAppointmentDateTime(b) - parseAppointmentDateTime(a);
+  });
+
+  // Comprehensive debug logging
+  console.log("=== APPOINTMENT FILTERING DEBUG ===", {
     totalAppointments: appointments.length,
     visibleAppointments: sortedAppointments.length,
-    statusFilter,
-    dateRange,
-    doctorFilter,
+    filters: {
+      statusFilter,
+      dateRange,
+      doctorFilter,
+      searchTerm,
+    },
+    doctorFilterDetails: {
+      isEmpty: doctorFilter.length === 0,
+      length: doctorFilter.length,
+      values: doctorFilter,
+    },
+    dateRangeDetails: {
+      value: dateRange,
+      type: typeof dateRange,
+    },
   });
+
+  // Sample appointments that pass/fail filters
+  if (appointments.length > 0) {
+    const samplePassed = sortedAppointments.slice(0, 3);
+    const sampleFailed = appointments
+      .filter((apt) => !sortedAppointments.includes(apt))
+      .slice(0, 3);
+
+    console.log(
+      "Sample appointments that PASSED filters:",
+      samplePassed.map((apt) => ({
+        date: apt.appointmentDate,
+        doctor: apt.doctorName,
+        patient: getPatientName(apt),
+        status: apt.status,
+        doctorMatch: matchesDoctorFilter(apt.doctorName, doctorFilter),
+      }))
+    );
+
+    if (sampleFailed.length > 0) {
+      console.log(
+        "Sample appointments that FAILED filters:",
+        sampleFailed.map((apt) => ({
+          date: apt.appointmentDate,
+          doctor: apt.doctorName,
+          patient: getPatientName(apt),
+          status: apt.status,
+          doctorMatch: matchesDoctorFilter(apt.doctorName, doctorFilter),
+          hasDate: !!apt.appointmentDate,
+        }))
+      );
+    }
+  }
 
   // Pagination logic
   const totalPages = Math.ceil(sortedAppointments.length / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
   const endIndex = startIndex + itemsPerPage;
-  const paginatedAppointments = sortedAppointments.slice(
-    startIndex,
-    endIndex
-  );
+  const paginatedAppointments = sortedAppointments.slice(startIndex, endIndex);
 
   // Group appointments by doctor for the list view
   const appointmentsByDoctor = paginatedAppointments.reduce(
@@ -843,11 +1170,13 @@ export default function Appointments() {
   };
 
   const handleReschedule = (appointment) => {
+    console.log("handleReschedule called with:", appointment);
     setSelectedAppointment(appointment);
     const currentDate = appointment.appointmentDate.split("T")[0];
     setSelectedRescheduleDate(currentDate);
     setRescheduleCalendarMonth(new Date(currentDate));
     setShowRescheduleModal(true);
+    console.log("Reschedule modal state should be true now");
   };
 
   // Get available dates for a doctor based on their schedule
@@ -877,8 +1206,46 @@ export default function Appointments() {
   const isDateAvailableForDoctor = (doctorName, dateString) => {
     if (!dateString) return false;
     const date = new Date(dateString);
-    const dayOfWeek = date.getDay();
+    const dayOfWeek = date.getDay(); // 0 = Sunday, 1 = Monday, etc.
 
+    // Use clinic settings if available
+    if (clinicSettings) {
+      // Determine which doctor type based on name
+      const isObgyne = clinicSettings.obgyneDoctor?.name === doctorName;
+      const isPediatric = clinicSettings.pediatrician?.name === doctorName;
+
+      if (isObgyne && clinicSettings.obgyneDoctor?.hours) {
+        const dayNames = [
+          "sunday",
+          "monday",
+          "tuesday",
+          "wednesday",
+          "thursday",
+          "friday",
+          "saturday",
+        ];
+        const dayName = dayNames[dayOfWeek];
+        const dayData = clinicSettings.obgyneDoctor.hours[dayName];
+        return dayData?.enabled && dayData?.start && dayData?.end;
+      }
+
+      if (isPediatric && clinicSettings.pediatrician?.hours) {
+        const dayNames = [
+          "sunday",
+          "monday",
+          "tuesday",
+          "wednesday",
+          "thursday",
+          "friday",
+          "saturday",
+        ];
+        const dayName = dayNames[dayOfWeek];
+        const dayData = clinicSettings.pediatrician.hours[dayName];
+        return dayData?.enabled && dayData?.start && dayData?.end;
+      }
+    }
+
+    // Fallback to hardcoded schedules for backward compatibility
     const schedules = {
       "Dr. Maria Sarah L. Manaloto": [1, 3, 5], // Monday, Wednesday, Friday
       "Dr. Shara Laine S. Vino": [1, 2, 4], // Monday, Tuesday, Thursday
@@ -914,8 +1281,10 @@ export default function Appointments() {
   };
 
   const handleCancelClickModal = (appointment) => {
+    console.log("handleCancelClickModal called with:", appointment);
     setActionAppointment(appointment);
     setShowCancelModal(true);
+    console.log("Cancel modal state should be true now");
   };
 
   const confirmAppointment = async () => {
@@ -945,7 +1314,11 @@ export default function Appointments() {
   };
 
   const handleApproveCancellation = async (appointment) => {
-    if (window.confirm("Are you sure you want to approve this cancellation request?")) {
+    if (
+      window.confirm(
+        "Are you sure you want to approve this cancellation request?"
+      )
+    ) {
       try {
         await appointmentsAPI.approveCancellation(appointment._id);
         toast.success("Cancellation request approved successfully");
@@ -958,7 +1331,11 @@ export default function Appointments() {
   };
 
   const handleRejectCancellation = async (appointment) => {
-    if (window.confirm("Are you sure you want to reject this cancellation request? The appointment will be restored to its previous status.")) {
+    if (
+      window.confirm(
+        "Are you sure you want to reject this cancellation request? The appointment will be restored to its previous status."
+      )
+    ) {
       try {
         await appointmentsAPI.rejectCancellation(appointment._id);
         toast.success("Cancellation request rejected successfully");
@@ -1129,7 +1506,7 @@ export default function Appointments() {
     setNewAppointment((prev) => {
       const updated = { ...prev, [name]: value };
       // Auto-calculate end time when appointment time changes
-      if (name === 'appointmentTime' && value) {
+      if (name === "appointmentTime" && value) {
         updated.endTime = add30Minutes(value);
       }
       return updated;
@@ -1213,7 +1590,9 @@ export default function Appointments() {
         appointmentDate: newAppointment.appointmentDate,
         appointmentTime: newAppointment.appointmentTime,
         endTime: newAppointment.endTime || undefined,
-        estimatedWaitTime: newAppointment.estimatedWaitTime ? parseInt(newAppointment.estimatedWaitTime) : undefined,
+        estimatedWaitTime: newAppointment.estimatedWaitTime
+          ? parseInt(newAppointment.estimatedWaitTime)
+          : undefined,
         serviceType: newAppointment.serviceType,
         contactInfo: { primaryPhone: newAppointment.contactNumber },
         patientName: newAppointment.patientName.trim(),
@@ -1228,7 +1607,7 @@ export default function Appointments() {
       setNewAppointment({
         patientName: "",
         contactNumber: "",
-        doctorName: allDoctorNames[0],
+        doctorName: dynamicDoctorNames[0] || allDoctorNames[0],
         appointmentDate: new Date().toISOString().split("T")[0],
         appointmentTime: "09:00 AM",
         endTime: "",
@@ -1355,42 +1734,96 @@ export default function Appointments() {
                 Doctors:
               </span>
               <Button
-                variant={
-                  doctorFilter.length === allDoctorNames.length
-                    ? "clinic"
-                    : "outline"
-                }
+                variant={doctorFilter.length === 0 ? "clinic" : "outline"}
                 size="sm"
                 className="h-9"
-                onClick={() => setDoctorFilter(allDoctorNames)}
+                onClick={() => setDoctorFilter([])}
               >
                 All
               </Button>
               <Button
                 variant={
-                  doctorFilter.length === 1 &&
-                  doctorFilter[0] === allDoctorNames[0]
+                  (() => {
+                    if (doctorFilter.length === 0) return false;
+                    // Check if any appointment doctor name in filter maps to this settings doctor
+                    return doctorFilter.some((filterName) => {
+                      const mappedFilterName =
+                        mapDoctorNameToSettings(filterName);
+                      return mappedFilterName === dynamicDoctorNames[0];
+                    });
+                  })()
                     ? "clinic"
                     : "outline"
                 }
                 size="sm"
-                onClick={() => setDoctorFilter([allDoctorNames[0]])}
+                onClick={() => {
+                  // Get all appointment doctor names that map to this settings doctor
+                  const appointmentNames =
+                    getAppointmentDoctorNamesForSettingsDoctor(
+                      dynamicDoctorNames[0]
+                    );
+                  // If we found matching appointment names, use those; otherwise use settings name
+                  setDoctorFilter(
+                    appointmentNames.length > 0
+                      ? appointmentNames
+                      : [dynamicDoctorNames[0]]
+                  );
+                }}
                 className="flex items-center gap-1 h-9"
               >
-                Dr. Maria
+                {dynamicDoctorNames[0]
+                  ? dynamicDoctorNames[0].startsWith("Dr. ")
+                    ? "Dr. " +
+                      dynamicDoctorNames[0]
+                        .replace("Dr. ", "")
+                        .split(" ")
+                        .slice(0, 2)
+                        .join(" ")
+                    : "Dr. " +
+                      dynamicDoctorNames[0].split(" ").slice(0, 2).join(" ")
+                  : "Dr. Maria"}
               </Button>
               <Button
                 variant={
-                  doctorFilter.length === 1 &&
-                  doctorFilter[0] === allDoctorNames[1]
+                  (() => {
+                    if (doctorFilter.length === 0) return false;
+                    // Check if any appointment doctor name in filter maps to this settings doctor
+                    return doctorFilter.some((filterName) => {
+                      const mappedFilterName =
+                        mapDoctorNameToSettings(filterName);
+                      return mappedFilterName === dynamicDoctorNames[1];
+                    });
+                  })()
                     ? "clinic"
                     : "outline"
                 }
                 size="sm"
-                onClick={() => setDoctorFilter([allDoctorNames[1]])}
+                onClick={() => {
+                  // Get all appointment doctor names that map to this settings doctor
+                  const appointmentNames =
+                    getAppointmentDoctorNamesForSettingsDoctor(
+                      dynamicDoctorNames[1]
+                    );
+                  // If we found matching appointment names, use those; otherwise use settings name
+                  setDoctorFilter(
+                    appointmentNames.length > 0
+                      ? appointmentNames
+                      : [dynamicDoctorNames[1]]
+                  );
+                }}
                 className="flex items-center gap-1 h-9"
               >
-                Dr. Shara
+                {dynamicDoctorNames[1]
+                  ? dynamicDoctorNames[1].startsWith("Dr. ")
+                    ? "Dr. " +
+                      dynamicDoctorNames[1]
+                        .replace("Dr. ", "")
+                        .split(" ")
+                        .slice(0, 2)
+                        .join(" ")
+                    : "Dr. " +
+                      dynamicDoctorNames[1].split(" ").slice(0, 2).join(" ")
+                  : "Dr. Shara"}
               </Button>
             </div>
           </div>
@@ -1536,13 +1969,21 @@ export default function Appointments() {
                       Doctors
                     </div>
                     <div className="space-y-2">
-                      {allDoctorNames.map((doctor) => (
+                      {dynamicDoctorNames.map((doctor) => (
                         <div key={doctor} className="flex items-center">
                           <input
                             type="checkbox"
                             id={doctor}
                             name="doctorFilter"
-                            checked={doctorFilter.includes(doctor)}
+                            checked={(() => {
+                              // Check if any appointment doctor name in filter maps to this doctor
+                              if (doctorFilter.length === 0) return false;
+                              return doctorFilter.some((filterName) => {
+                                const mappedFilterName =
+                                  mapDoctorNameToSettings(filterName);
+                                return mappedFilterName === doctor;
+                              });
+                            })()}
                             onChange={() => handleDoctorFilterChange(doctor)}
                             className="h-4 w-4 rounded border-gray-300 text-clinic-600 focus:ring-clinic-500 cursor-pointer"
                           />
@@ -1550,11 +1991,15 @@ export default function Appointments() {
                             htmlFor={doctor}
                             className="ml-2 text-sm text-gray-700 cursor-pointer"
                           >
-                            {doctor
-                              .replace("Dr. ", "")
-                              .split(" ")
-                              .slice(0, 2)
-                              .join(" ")}
+                            {doctor.startsWith("Dr. ")
+                              ? "Dr. " +
+                                doctor
+                                  .replace("Dr. ", "")
+                                  .split(" ")
+                                  .slice(0, 2)
+                                  .join(" ")
+                              : "Dr. " +
+                                doctor.split(" ").slice(0, 2).join(" ")}
                           </label>
                         </div>
                       ))}
@@ -1761,58 +2206,122 @@ export default function Appointments() {
             <Card className="bg-white border-soft-olive-200">
               <CardContent className="p-0 overflow-auto">
                 <div className="overflow-x-auto">
-                  <table ref={tableRef} className="min-w-full text-sm border-collapse">
+                  <table
+                    ref={tableRef}
+                    className="min-w-full text-sm border-collapse"
+                  >
                     <colgroup>
-                      <col style={{ width: `${columnWidths[1]}px`, minWidth: '80px' }} />
-                      <col style={{ width: `${columnWidths[0]}px`, minWidth: '60px' }} />
-                      <col style={{ width: `${columnWidths[2]}px`, minWidth: '120px' }} />
-                      <col style={{ width: `${columnWidths[3]}px`, minWidth: '150px' }} />
-                      <col style={{ width: `${columnWidths[4]}px`, minWidth: '120px' }} />
-                      <col style={{ width: `${columnWidths[5]}px`, minWidth: '70px' }} />
-                      <col style={{ width: `${columnWidths[6]}px`, minWidth: '80px' }} />
-                      <col style={{ width: `${columnWidths[7]}px`, minWidth: '90px' }} />
-                      <col style={{ width: `${columnWidths[8]}px`, minWidth: '120px' }} />
+                      <col
+                        style={{
+                          width: `${columnWidths[1]}px`,
+                          minWidth: "80px",
+                        }}
+                      />
+                      <col
+                        style={{
+                          width: `${columnWidths[0]}px`,
+                          minWidth: "60px",
+                        }}
+                      />
+                      <col
+                        style={{
+                          width: `${columnWidths[2]}px`,
+                          minWidth: "120px",
+                        }}
+                      />
+                      <col
+                        style={{
+                          width: `${columnWidths[3]}px`,
+                          minWidth: "150px",
+                        }}
+                      />
+                      <col
+                        style={{
+                          width: `${columnWidths[4]}px`,
+                          minWidth: "120px",
+                        }}
+                      />
+                      <col
+                        style={{
+                          width: `${columnWidths[5]}px`,
+                          minWidth: "70px",
+                        }}
+                      />
+                      <col
+                        style={{
+                          width: `${columnWidths[6]}px`,
+                          minWidth: "80px",
+                        }}
+                      />
+                      <col
+                        style={{
+                          width: `${columnWidths[7]}px`,
+                          minWidth: "90px",
+                        }}
+                      />
+                      <col
+                        style={{
+                          width: `${columnWidths[8]}px`,
+                          minWidth: "120px",
+                        }}
+                      />
                     </colgroup>
                     <thead className="bg-gray-50 text-charcoal">
                       <tr>
                         <th className="px-1 py-2 text-left relative group">
-                          <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-blue-300 group-hover:bg-blue-200 transition-colors" 
-                               onMouseDown={(e) => handleResize(e, 1)}></div>
+                          <div
+                            className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-blue-300 group-hover:bg-blue-200 transition-colors"
+                            onMouseDown={(e) => handleResize(e, 1)}
+                          ></div>
                           Date
                         </th>
                         <th className="px-1 py-2 text-left relative group">
-                          <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-blue-300 group-hover:bg-blue-200 transition-colors" 
-                               onMouseDown={(e) => handleResize(e, 0)}></div>
+                          <div
+                            className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-blue-300 group-hover:bg-blue-200 transition-colors"
+                            onMouseDown={(e) => handleResize(e, 0)}
+                          ></div>
                           Time
                         </th>
                         <th className="px-1 py-2 text-left relative group">
-                          <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-blue-300 group-hover:bg-blue-200 transition-colors" 
-                               onMouseDown={(e) => handleResize(e, 2)}></div>
+                          <div
+                            className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-blue-300 group-hover:bg-blue-200 transition-colors"
+                            onMouseDown={(e) => handleResize(e, 2)}
+                          ></div>
                           Patient
                         </th>
                         <th className="px-1 py-2 text-left relative group">
-                          <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-blue-300 group-hover:bg-blue-200 transition-colors" 
-                               onMouseDown={(e) => handleResize(e, 3)}></div>
+                          <div
+                            className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-blue-300 group-hover:bg-blue-200 transition-colors"
+                            onMouseDown={(e) => handleResize(e, 3)}
+                          ></div>
                           Doctor
                         </th>
                         <th className="px-1 py-2 text-left relative group">
-                          <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-blue-300 group-hover:bg-blue-200 transition-colors" 
-                               onMouseDown={(e) => handleResize(e, 4)}></div>
+                          <div
+                            className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-blue-300 group-hover:bg-blue-200 transition-colors"
+                            onMouseDown={(e) => handleResize(e, 4)}
+                          ></div>
                           Service
                         </th>
                         <th className="px-1 py-2 text-left relative group">
-                          <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-blue-300 group-hover:bg-blue-200 transition-colors" 
-                               onMouseDown={(e) => handleResize(e, 5)}></div>
+                          <div
+                            className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-blue-300 group-hover:bg-blue-200 transition-colors"
+                            onMouseDown={(e) => handleResize(e, 5)}
+                          ></div>
                           End Time
                         </th>
                         <th className="px-1 py-2 text-left relative group">
-                          <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-blue-300 group-hover:bg-blue-200 transition-colors" 
-                               onMouseDown={(e) => handleResize(e, 6)}></div>
+                          <div
+                            className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-blue-300 group-hover:bg-blue-200 transition-colors"
+                            onMouseDown={(e) => handleResize(e, 6)}
+                          ></div>
                           Wait Time
                         </th>
                         <th className="px-1 py-2 text-left relative group">
-                          <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-blue-300 group-hover:bg-blue-200 transition-colors" 
-                               onMouseDown={(e) => handleResize(e, 7)}></div>
+                          <div
+                            className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-blue-300 group-hover:bg-blue-200 transition-colors"
+                            onMouseDown={(e) => handleResize(e, 7)}
+                          ></div>
                           Status
                         </th>
                         <th className="px-1 py-2 text-left relative">
@@ -1820,114 +2329,135 @@ export default function Appointments() {
                         </th>
                       </tr>
                     </thead>
-                  <tbody className="divide-y">
-                    {paginatedAppointments.map((a) => (
-                      <tr key={a._id} className="hover:bg-gray-50">
-                        <td className="px-1 py-2 border-r border-gray-100">
-                          {formatDate(a.appointmentDate)}
-                        </td>
-                        <td className="px-1 py-2 font-medium border-r border-gray-100">
-                          {formatTime(a.appointmentTime)}
-                        </td>
-                        <td className="px-1 py-2 truncate border-r border-gray-100">
-                          {getPatientName(a)}
-                        </td>
-                        <td className="px-1 py-2 truncate border-r border-gray-100">{a.doctorName}</td>
-                        <td className="px-1 py-2 truncate border-r border-gray-100">
-                          {a.serviceType.replace(/_/g, " ")}
-                        </td>
-                        <td className="px-1 py-2 border-r border-gray-100">
-                          {a.endTime ? formatTime(a.endTime) : (a.appointmentTime ? formatTime(add30Minutes(a.appointmentTime)) : '—')}
-                        </td>
-                        <td className="px-1 py-2 border-r border-gray-100">
-                          {a.estimatedWaitTime ? `${a.estimatedWaitTime} min` : '—'}
-                        </td>
-                        <td className="px-1 py-2 border-r border-gray-100">
-                          <span
-                            className={`px-2 py-0.5 rounded-full text-xs ${getStatusBadgeClass(
-                              a.status
-                            )}`}
-                          >
-                            {(() => {
-                              const status = a.status?.toLowerCase();
-                              if (status === "cancellation_pending") {
-                                return "Cancellation Pending";
-                              } else if (status === "reschedule_pending") {
-                                return "Reschedule Pending";
-                              }
-                              return a.status.charAt(0).toUpperCase() + a.status.slice(1);
-                            })()}
-                          </span>
-                        </td>
-                        <td className="px-1 py-2">
-                          <div className="flex gap-1.5">
-                            {/* Patient Cancellation Request Actions */}
-                            {a.status === "cancellation_pending" && 
-                             a.cancellationRequest && 
-                             a.cancellationRequest.requestedBy && (
-                              <>
+                    <tbody className="divide-y">
+                      {paginatedAppointments.map((a) => (
+                        <tr key={a._id} className="hover:bg-gray-50">
+                          <td className="px-1 py-2 border-r border-gray-100">
+                            {formatDate(a.appointmentDate)}
+                          </td>
+                          <td className="px-1 py-2 font-medium border-r border-gray-100">
+                            {formatTime(a.appointmentTime)}
+                          </td>
+                          <td className="px-1 py-2 truncate border-r border-gray-100">
+                            {getPatientName(a)}
+                          </td>
+                          <td className="px-1 py-2 truncate border-r border-gray-100">
+                            {a.doctorName}
+                          </td>
+                          <td className="px-1 py-2 truncate border-r border-gray-100">
+                            {a.serviceType.replace(/_/g, " ")}
+                          </td>
+                          <td className="px-1 py-2 border-r border-gray-100">
+                            {a.endTime
+                              ? formatTime(a.endTime)
+                              : a.appointmentTime
+                              ? formatTime(add30Minutes(a.appointmentTime))
+                              : "—"}
+                          </td>
+                          <td className="px-1 py-2 border-r border-gray-100">
+                            {a.estimatedWaitTime
+                              ? `${a.estimatedWaitTime} min`
+                              : "—"}
+                          </td>
+                          <td className="px-1 py-2 border-r border-gray-100">
+                            <span
+                              className={`px-2 py-0.5 rounded-full text-xs ${getStatusBadgeClass(
+                                a.status
+                              )}`}
+                            >
+                              {(() => {
+                                const status = a.status?.toLowerCase();
+                                if (status === "cancellation_pending") {
+                                  return "Cancellation Pending";
+                                } else if (status === "reschedule_pending") {
+                                  return "Reschedule Pending";
+                                }
+                                return (
+                                  a.status.charAt(0).toUpperCase() +
+                                  a.status.slice(1)
+                                );
+                              })()}
+                            </span>
+                          </td>
+                          <td className="px-1 py-2">
+                            <div
+                              className="flex gap-1.5 relative z-10"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              {/* Patient Cancellation Request Actions */}
+                              {a.status === "cancellation_pending" &&
+                                a.cancellationRequest &&
+                                a.cancellationRequest.requestedBy && (
+                                  <>
+                                    <Button
+                                      size="sm"
+                                      className="h-7 px-2 bg-green-600 hover:bg-green-700 text-white"
+                                      onClick={() =>
+                                        handleApproveCancellation(a)
+                                      }
+                                    >
+                                      Approve
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      className="h-7 px-2 bg-red-600 hover:bg-red-700 text-white"
+                                      onClick={() =>
+                                        handleRejectCancellation(a)
+                                      }
+                                    >
+                                      Reject
+                                    </Button>
+                                  </>
+                                )}
+                              {a.status === "scheduled" && (
+                                <Button
+                                  size="sm"
+                                  className="h-7 px-2 bg-blue-600 hover:bg-blue-700 text-white"
+                                  onClick={() => handleConfirmClick(a)}
+                                >
+                                  Confirm
+                                </Button>
+                              )}
+                              {a.status === "confirmed" && (
                                 <Button
                                   size="sm"
                                   className="h-7 px-2 bg-green-600 hover:bg-green-700 text-white"
-                                  onClick={() => handleApproveCancellation(a)}
+                                  onClick={() => handleCompleteClick(a)}
+                                  disabled={!canCompleteAppointment(a)}
+                                  title={
+                                    !canCompleteAppointment(a)
+                                      ? "Cannot complete appointment until the appointment date/time has passed"
+                                      : ""
+                                  }
                                 >
-                                  Approve
+                                  Complete
                                 </Button>
-                                <Button
-                                  size="sm"
-                                  className="h-7 px-2 bg-red-600 hover:bg-red-700 text-white"
-                                  onClick={() => handleRejectCancellation(a)}
-                                >
-                                  Reject
-                                </Button>
-                              </>
-                            )}
-                            {a.status === "scheduled" && (
-                              <Button
-                                size="sm"
-                                className="h-7 px-2 bg-blue-600 hover:bg-blue-700 text-white"
-                                onClick={() => handleConfirmClick(a)}
-                              >
-                                Confirm
-                              </Button>
-                            )}
-                            {a.status === "confirmed" && (
-                              <Button
-                                size="sm"
-                                className="h-7 px-2 bg-green-600 hover:bg-green-700 text-white"
-                                onClick={() => handleCompleteClick(a)}
-                              >
-                                Complete
-                              </Button>
-                            )}
-                            {(a.status === "scheduled" ||
-                              a.status === "confirmed") && (
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="h-7 px-2"
-                                onClick={() => handleReschedule(a)}
-                              >
-                                Resched
-                              </Button>
-                            )}
-                            {(a.status === "scheduled" ||
-                              a.status === "confirmed") && (
-                              <Button
-                                size="sm"
-                                variant="destructive"
-                                className="h-7 px-2"
-                                onClick={() => handleCancelClickModal(a)}
-                              >
-                                Cancel
-                              </Button>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                              )}
+                              {(a.status === "scheduled" ||
+                                a.status === "confirmed") && (
+                                <>
+                                  <button
+                                    type="button"
+                                    className="h-7 px-2 rounded border bg-white hover:bg-gray-100 text-sm"
+                                    onClick={() => handleReschedule(a)}
+                                  >
+                                    Reschedule
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="h-7 px-2 rounded bg-red-600 hover:bg-red-700 text-white text-sm"
+                                    onClick={() => handleCancelClickModal(a)}
+                                  >
+                                    Cancel
+                                  </button>
+                                </>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               </CardContent>
             </Card>
@@ -1998,13 +2528,23 @@ export default function Appointments() {
                                           )}`}
                                         >
                                           {(() => {
-                                            const status = appointment.status?.toLowerCase();
-                                            if (status === "cancellation_pending") {
+                                            const status =
+                                              appointment.status?.toLowerCase();
+                                            if (
+                                              status === "cancellation_pending"
+                                            ) {
                                               return "Cancellation Pending";
-                                            } else if (status === "reschedule_pending") {
+                                            } else if (
+                                              status === "reschedule_pending"
+                                            ) {
                                               return "Reschedule Pending";
                                             }
-                                            return appointment.status.charAt(0).toUpperCase() + appointment.status.slice(1);
+                                            return (
+                                              appointment.status
+                                                .charAt(0)
+                                                .toUpperCase() +
+                                              appointment.status.slice(1)
+                                            );
                                           })()}
                                         </span>
                                       </div>
@@ -2024,21 +2564,28 @@ export default function Appointments() {
                                       </p>
                                     )}
                                     {/* Patient Cancellation Request */}
-                                    {appointment.status === "cancellation_pending" && 
-                                     appointment.cancellationRequest && 
-                                     appointment.cancellationRequest.requestedBy && (
-                                      <div className="mt-2 p-2 bg-orange-50 border border-orange-200 rounded text-xs">
-                                        <p className="font-semibold text-orange-800 mb-1">
-                                          Patient Cancellation Request
-                                        </p>
-                                        <p className="text-orange-700">
-                                          <strong>Reason:</strong> {appointment.cancellationRequest.reason || "No reason provided"}
-                                        </p>
-                                        <p className="text-orange-600 text-xs mt-1">
-                                          Requested on {new Date(appointment.cancellationRequest.requestedAt).toLocaleDateString()}
-                                        </p>
-                                      </div>
-                                    )}
+                                    {appointment.status ===
+                                      "cancellation_pending" &&
+                                      appointment.cancellationRequest &&
+                                      appointment.cancellationRequest
+                                        .requestedBy && (
+                                        <div className="mt-2 p-2 bg-orange-50 border border-orange-200 rounded text-xs">
+                                          <p className="font-semibold text-orange-800 mb-1">
+                                            Patient Cancellation Request
+                                          </p>
+                                          <p className="text-orange-700 break-words whitespace-pre-wrap">
+                                            <strong>Reason:</strong>{" "}
+                                            {appointment.cancellationRequest
+                                              .reason || "No reason provided"}
+                                          </p>
+                                          <p className="text-orange-600 text-xs mt-1">
+                                            Requested on{" "}
+                                            {new Date(
+                                              appointment.cancellationRequest.requestedAt
+                                            ).toLocaleDateString()}
+                                          </p>
+                                        </div>
+                                      )}
                                     <div className="flex items-center gap-2">
                                       <Phone className="h-3 w-3" />
                                       <span className="text-xs">
@@ -2068,32 +2615,38 @@ export default function Appointments() {
                               <div className="border-t border-soft-olive-100 pt-3">
                                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
                                   {/* Patient Cancellation Request Actions */}
-                                  {appointment.status === "cancellation_pending" && 
-                                   appointment.cancellationRequest && 
-                                   appointment.cancellationRequest.requestedBy && (
-                                    <>
-                                      <Button
-                                        size="sm"
-                                        className="bg-green-600 hover:bg-green-700 text-white font-semibold"
-                                        onClick={() =>
-                                          handleApproveCancellation(appointment)
-                                        }
-                                      >
-                                        <CheckCircle className="h-3 w-3 mr-1" />
-                                        Approve
-                                      </Button>
-                                      <Button
-                                        size="sm"
-                                        className="bg-red-500 hover:bg-red-600 text-white font-semibold"
-                                        onClick={() =>
-                                          handleRejectCancellation(appointment)
-                                        }
-                                      >
-                                        <X className="h-3 w-3 mr-1" />
-                                        Reject
-                                      </Button>
-                                    </>
-                                  )}
+                                  {appointment.status ===
+                                    "cancellation_pending" &&
+                                    appointment.cancellationRequest &&
+                                    appointment.cancellationRequest
+                                      .requestedBy && (
+                                      <>
+                                        <Button
+                                          size="sm"
+                                          className="bg-green-600 hover:bg-green-700 text-white font-semibold"
+                                          onClick={() =>
+                                            handleApproveCancellation(
+                                              appointment
+                                            )
+                                          }
+                                        >
+                                          <CheckCircle className="h-3 w-3 mr-1" />
+                                          Approve
+                                        </Button>
+                                        <Button
+                                          size="sm"
+                                          className="bg-red-500 hover:bg-red-600 text-white font-semibold"
+                                          onClick={() =>
+                                            handleRejectCancellation(
+                                              appointment
+                                            )
+                                          }
+                                        >
+                                          <X className="h-3 w-3 mr-1" />
+                                          Reject
+                                        </Button>
+                                      </>
+                                    )}
                                   {appointment.status === "scheduled" && (
                                     <Button
                                       size="sm"
@@ -2109,9 +2662,17 @@ export default function Appointments() {
                                   {appointment.status === "confirmed" && (
                                     <Button
                                       size="sm"
-                                      className="bg-green-600 hover:bg-green-700 text-white font-semibold"
+                                      className="bg-green-600 hover:bg-green-700 text-white font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
                                       onClick={() =>
                                         handleCompleteClick(appointment)
+                                      }
+                                      disabled={
+                                        !canCompleteAppointment(appointment)
+                                      }
+                                      title={
+                                        !canCompleteAppointment(appointment)
+                                          ? "Cannot complete appointment until the appointment date/time has passed"
+                                          : ""
                                       }
                                     >
                                       <CheckCircle className="h-3 w-3 mr-1" />
@@ -2120,29 +2681,26 @@ export default function Appointments() {
                                   )}
                                   {(appointment.status === "scheduled" ||
                                     appointment.status === "confirmed") && (
-                                    <Button
-                                      size="sm"
-                                      className="bg-white border border-black text-black font-semibold hover:bg-gray-100 hover:text-black hover:border-black"
-                                      onClick={() =>
-                                        handleReschedule(appointment)
-                                      }
-                                    >
-                                      <CalendarIcon className="h-3 w-3 mr-1" />
-                                      Reschedule
-                                    </Button>
-                                  )}
-                                  {(appointment.status === "scheduled" ||
-                                    appointment.status === "confirmed") && (
-                                    <Button
-                                      size="sm"
-                                      className="bg-red-500 hover:bg-red-600 text-white font-semibold"
-                                      onClick={() =>
-                                        handleCancelClickModal(appointment)
-                                      }
-                                    >
-                                      <X className="h-3 w-3 mr-1" />
-                                      Cancel
-                                    </Button>
+                                    <>
+                                      <button
+                                        type="button"
+                                        className="px-3 py-1 rounded border bg-white hover:bg-gray-100 text-sm"
+                                        onClick={() =>
+                                          handleReschedule(appointment)
+                                        }
+                                      >
+                                        Reschedule
+                                      </button>
+                                      <button
+                                        type="button"
+                                        className="px-3 py-1 rounded bg-red-600 hover:bg-red-700 text-white text-sm"
+                                        onClick={() =>
+                                          handleCancelClickModal(appointment)
+                                        }
+                                      >
+                                        Cancel
+                                      </button>
+                                    </>
                                   )}
                                 </div>
                               </div>
@@ -2245,12 +2803,13 @@ export default function Appointments() {
                     </div>
                     <div className="text-2xl font-bold text-red-500 mb-1">
                       {
-                        visibleAppointments.filter(
-                          (a) => {
-                            const status = a.status?.toLowerCase();
-                            return status === "cancelled" || status === "cancellation_pending";
-                          }
-                        ).length
+                        visibleAppointments.filter((a) => {
+                          const status = a.status?.toLowerCase();
+                          return (
+                            status === "cancelled" ||
+                            status === "cancellation_pending"
+                          );
+                        }).length
                       }
                     </div>
                     <div className="text-sm font-medium text-muted-gold">
@@ -2408,12 +2967,15 @@ export default function Appointments() {
                   "EEE, MMM d, yyyy"
                 )}{" "}
                 at {selectedAppointment.appointmentTime}
-                {selectedAppointment.endTime || selectedAppointment.appointmentTime ? (
+                {selectedAppointment.endTime ||
+                selectedAppointment.appointmentTime ? (
                   <span className="text-gray-500">
                     {" - "}
-                    {selectedAppointment.endTime 
+                    {selectedAppointment.endTime
                       ? formatTime(selectedAppointment.endTime)
-                      : formatTime(add30Minutes(selectedAppointment.appointmentTime))}
+                      : formatTime(
+                          add30Minutes(selectedAppointment.appointmentTime)
+                        )}
                   </span>
                 ) : null}
               </div>
@@ -2423,7 +2985,7 @@ export default function Appointments() {
                   <div className="col-span-1 font-semibold text-gray-500 pt-1">
                     Reason
                   </div>
-                  <div className="col-span-2 bg-gray-50 p-2 rounded-md italic">
+                  <div className="col-span-2 bg-gray-50 p-2 rounded-md italic break-words whitespace-pre-wrap max-h-32 overflow-y-auto">
                     "{selectedAppointment.reasonForVisit}"
                   </div>
                 </>
@@ -2554,7 +3116,10 @@ export default function Appointments() {
                       for (let day = 1; day <= daysInMonth; day++) {
                         const date = new Date(year, month, day);
                         // Format date string directly to avoid timezone issues
-                        const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                        const dateStr = `${year}-${String(month + 1).padStart(
+                          2,
+                          "0"
+                        )}-${String(day).padStart(2, "0")}`;
                         const isAvailable = isDateAvailableForDoctor(
                           selectedAppointment.doctorName,
                           dateStr
@@ -2565,7 +3130,12 @@ export default function Appointments() {
                         const todayYear = today.getFullYear();
                         const todayMonth = today.getMonth();
                         const todayDay = today.getDate();
-                        const todayStr = `${todayYear}-${String(todayMonth + 1).padStart(2, '0')}-${String(todayDay).padStart(2, '0')}`;
+                        const todayStr = `${todayYear}-${String(
+                          todayMonth + 1
+                        ).padStart(2, "0")}-${String(todayDay).padStart(
+                          2,
+                          "0"
+                        )}`;
                         const isToday = dateStr === todayStr;
 
                         cells.push(
@@ -2576,7 +3146,8 @@ export default function Appointments() {
                             onClick={() => {
                               if (isAvailable && !isPast) {
                                 setSelectedRescheduleDate(dateStr);
-                                const hiddenInput = document.getElementById("newDate");
+                                const hiddenInput =
+                                  document.getElementById("newDate");
                                 if (hiddenInput) {
                                   hiddenInput.value = dateStr;
                                 }
@@ -2696,7 +3267,10 @@ export default function Appointments() {
               </div>
 
               <div className="col-span-2">
-                <Label htmlFor="rescheduleReason" className="text-xs font-medium mb-1">
+                <Label
+                  htmlFor="rescheduleReason"
+                  className="text-xs font-medium mb-1"
+                >
                   Reason for Rescheduling
                 </Label>
                 <textarea
@@ -2722,7 +3296,8 @@ export default function Appointments() {
                 onClick={() => {
                   const newDate = document.getElementById("newDate").value;
                   const newTime = document.getElementById("newTime").value;
-                  const reasonInput = document.getElementById("rescheduleReason");
+                  const reasonInput =
+                    document.getElementById("rescheduleReason");
                   const reason = reasonInput ? reasonInput.value.trim() : "";
 
                   if (!newDate || !newTime) {
@@ -2816,7 +3391,11 @@ export default function Appointments() {
             </div>
             {selectedPatient && (
               <div className="p-1.5 bg-blue-50 rounded text-xs">
-                <div><b>ID:</b> {selectedPatient.patientId} | <b>Type:</b> {selectedPatient.patientType} | <b>Contact:</b> {selectedPatient.contactInfo?.primaryPhone}</div>
+                <div>
+                  <b>ID:</b> {selectedPatient.patientId} | <b>Type:</b>{" "}
+                  {selectedPatient.patientType} | <b>Contact:</b>{" "}
+                  {selectedPatient.contactInfo?.primaryPhone}
+                </div>
               </div>
             )}
             <div className="grid grid-cols-2 gap-2">
@@ -2848,7 +3427,9 @@ export default function Appointments() {
               </div>
             </div>
             <div>
-              <label className="block text-xs font-medium mb-0.5">Doctor *</label>
+              <label className="block text-xs font-medium mb-0.5">
+                Doctor *
+              </label>
               <select
                 name="doctorName"
                 value={newAppointment.doctorName}
@@ -2859,7 +3440,7 @@ export default function Appointments() {
                 className="w-full p-1.5 text-sm border border-gray-300 rounded-md"
                 required
               >
-                {allDoctorNames.map((doc) => (
+                {dynamicDoctorNames.map((doc) => (
                   <option key={doc} value={doc}>
                     {doc}
                   </option>
@@ -2868,7 +3449,9 @@ export default function Appointments() {
             </div>
             <div className="grid grid-cols-2 gap-2">
               <div>
-                <label className="block text-xs font-medium mb-0.5">Date *</label>
+                <label className="block text-xs font-medium mb-0.5">
+                  Date *
+                </label>
                 <input
                   type="date"
                   name="appointmentDate"
@@ -2880,7 +3463,9 @@ export default function Appointments() {
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium mb-0.5">Time *</label>
+                <label className="block text-xs font-medium mb-0.5">
+                  Time *
+                </label>
                 <select
                   name="appointmentTime"
                   value={newAppointment.appointmentTime}
@@ -2898,7 +3483,9 @@ export default function Appointments() {
             </div>
             <div className="grid grid-cols-2 gap-2">
               <div>
-                <label className="block text-xs font-medium mb-0.5">End Time</label>
+                <label className="block text-xs font-medium mb-0.5">
+                  End Time
+                </label>
                 <input
                   type="text"
                   name="endTime"
@@ -2910,7 +3497,9 @@ export default function Appointments() {
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium mb-0.5">Wait Time (min)</label>
+                <label className="block text-xs font-medium mb-0.5">
+                  Wait Time (min)
+                </label>
                 <input
                   type="number"
                   name="estimatedWaitTime"
@@ -3101,7 +3690,10 @@ export default function Appointments() {
               </div>
             )}
             <div>
-              <Label htmlFor="cancelReason" className="text-sm font-medium text-charcoal mb-2 block">
+              <Label
+                htmlFor="cancelReason"
+                className="text-sm font-medium text-charcoal mb-2 block"
+              >
                 Reason for Cancellation
               </Label>
               <textarea
@@ -3203,13 +3795,17 @@ export default function Appointments() {
                               )}`}
                             >
                               {(() => {
-                                const status = appointment.status?.toLowerCase();
+                                const status =
+                                  appointment.status?.toLowerCase();
                                 if (status === "cancellation_pending") {
                                   return "Cancellation Pending";
                                 } else if (status === "reschedule_pending") {
                                   return "Reschedule Pending";
                                 }
-                                return appointment.status.charAt(0).toUpperCase() + appointment.status.slice(1);
+                                return (
+                                  appointment.status.charAt(0).toUpperCase() +
+                                  appointment.status.slice(1)
+                                );
                               })()}
                             </span>
                           </div>
@@ -3258,39 +3854,48 @@ export default function Appointments() {
                         )}
 
                         {/* Patient Cancellation Request */}
-                        {appointment.status === "cancellation_pending" && 
-                         appointment.cancellationRequest && 
-                         appointment.cancellationRequest.requestedBy && (
-                          <div className="mt-2 p-2 bg-orange-50 border border-orange-200 rounded text-xs">
-                            <p className="font-semibold text-orange-800 mb-1">
-                              Patient Cancellation Request
-                            </p>
-                            <p className="text-orange-700">
-                              <strong>Reason:</strong> {appointment.cancellationRequest.reason || "No reason provided"}
-                            </p>
-                            <p className="text-orange-600 text-xs mt-1">
-                              Requested on {new Date(appointment.cancellationRequest.requestedAt).toLocaleDateString()}
-                            </p>
-                            <div className="flex gap-2 mt-2">
-                              <Button
-                                size="sm"
-                                className="bg-green-600 hover:bg-green-700 text-white text-xs"
-                                onClick={() => handleApproveCancellation(appointment)}
-                              >
-                                <CheckCircle className="h-3 w-3 mr-1" />
-                                Approve
-                              </Button>
-                              <Button
-                                size="sm"
-                                className="bg-red-500 hover:bg-red-600 text-white text-xs"
-                                onClick={() => handleRejectCancellation(appointment)}
-                              >
-                                <X className="h-3 w-3 mr-1" />
-                                Reject
-                              </Button>
+                        {appointment.status === "cancellation_pending" &&
+                          appointment.cancellationRequest &&
+                          appointment.cancellationRequest.requestedBy && (
+                            <div className="mt-2 p-2 bg-orange-50 border border-orange-200 rounded text-xs">
+                              <p className="font-semibold text-orange-800 mb-1">
+                                Patient Cancellation Request
+                              </p>
+                              <p className="text-orange-700">
+                                <strong>Reason:</strong>{" "}
+                                {appointment.cancellationRequest.reason ||
+                                  "No reason provided"}
+                              </p>
+                              <p className="text-orange-600 text-xs mt-1">
+                                Requested on{" "}
+                                {new Date(
+                                  appointment.cancellationRequest.requestedAt
+                                ).toLocaleDateString()}
+                              </p>
+                              <div className="flex gap-2 mt-2">
+                                <Button
+                                  size="sm"
+                                  className="bg-green-600 hover:bg-green-700 text-white text-xs"
+                                  onClick={() =>
+                                    handleApproveCancellation(appointment)
+                                  }
+                                >
+                                  <CheckCircle className="h-3 w-3 mr-1" />
+                                  Approve
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  className="bg-red-500 hover:bg-red-600 text-white text-xs"
+                                  onClick={() =>
+                                    handleRejectCancellation(appointment)
+                                  }
+                                >
+                                  <X className="h-3 w-3 mr-1" />
+                                  Reject
+                                </Button>
+                              </div>
                             </div>
-                          </div>
-                        )}
+                          )}
                       </div>
                     </div>
                   ))}

@@ -522,25 +522,25 @@ export default function PatientRegister() {
       </div>
       {/* Data Privacy Consent Modal */}
       <Dialog open={showConsent} onOpenChange={setShowConsent}>
-        <DialogContent className="sm:max-w-[720px] max-h-[80vh]">
-          <DialogHeader>
+        <DialogContent className="w-[95vw] max-w-[720px] max-h-[90vh] flex flex-col p-0 sm:p-6">
+          <DialogHeader className="px-4 pt-4 pb-2 sm:px-0 sm:pt-0 sm:pb-0 flex-shrink-0">
             <DialogTitle>Data Privacy Consent</DialogTitle>
           </DialogHeader>
-          <div className="border p-6 rounded text-gray-700 leading-relaxed">
-            <p className="mb-4">
+          <div className="border mx-4 sm:mx-0 p-4 sm:p-6 rounded text-gray-700 leading-relaxed overflow-y-auto flex-1 min-h-0">
+            <p className="mb-4 text-sm sm:text-base">
               Sa pag-participate ko sa patient portal system na pinapatakbo ng
               VM Mother and Child Clinic, kusa kong ibinibigay ang personal data
               ko, alam kong ang pagkolekta, pagproseso, at paggamit nito ay
               susunod sa Data Privacy Act of 2012 sa Pilipinas.
             </p>
-            <p className="mb-4">
+            <p className="mb-4 text-sm sm:text-base">
               Ibinibigay ko ang malinaw na consent na gamitin ng VM Mother and
               Child Clinic ang data ko para lang sa medical care, appointment
               management, at health record purposes, tinitiyak na mananatiling
               confidential ito at hindi ise-share sa third parties o aabusuhin,
               maliban kung hinihingi ng batas.
             </p>
-            <p className="mb-4">
+            <p className="mb-4 text-sm sm:text-base">
               Alam ko rin na may karapatan akong bawiin ang consent o
               mag-request na burahin ang data ko ayon sa Data Privacy Act. Ang
               pagpayag ko ay tanda ng informed consent, pag-unawa, at pagsunod
@@ -548,20 +548,20 @@ export default function PatientRegister() {
               umatras o magpa-delete ng data anumang oras basta naaayon sa
               batas.
             </p>
-            <div className="mt-6 p-4 bg-gray-50 rounded-lg">
-              <h4 className="font-semibold text-gray-900 mb-2">
+            <div className="mt-6 p-3 sm:p-4 bg-gray-50 rounded-lg">
+              <h4 className="font-semibold text-gray-900 mb-2 text-sm sm:text-base">
                 Contact Information:
               </h4>
-              <p className="text-sm">Phone: 0962 695 2050</p>
-              <p className="text-sm">Address: San Nicolas, Arayat, Pampanga</p>
-              <p className="text-xs text-gray-500">
+              <p className="text-xs sm:text-sm">Phone: 0962 695 2050</p>
+              <p className="text-xs sm:text-sm">Address: San Nicolas, Arayat, Pampanga</p>
+              <p className="text-xs text-gray-500 mt-1">
                 (Beside "Buff. It Up Auto Spa and Detailing" and in front of
                 INC‑San Nicolas)
               </p>
             </div>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowConsent(false)}>
+          <DialogFooter className="px-4 pb-4 pt-2 sm:px-0 sm:pb-0 sm:pt-0 flex-shrink-0 border-t mt-2 sm:border-t-0 sm:mt-0">
+            <Button variant="outline" onClick={() => setShowConsent(false)} className="w-full sm:w-auto">
               Close
             </Button>
             <Button
@@ -570,6 +570,7 @@ export default function PatientRegister() {
                 setShowConsent(false);
               }}
               disabled={consentTimer < 3}
+              className="w-full sm:w-auto"
             >
               {consentTimer < 3
                 ? `Please wait ${3 - consentTimer} second${
