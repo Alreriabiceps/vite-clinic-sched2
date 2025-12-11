@@ -51,6 +51,8 @@ import {
   Save,
   X,
   Edit3,
+  Lock,
+  Unlock,
 } from "lucide-react";
 // Helper component for displaying info items
 const InfoItem = ({ label, value, className = "" }) => (
@@ -272,6 +274,7 @@ const PatientDetail = () => {
     serviceType: "",
     reasonForVisit: "",
   });
+  const [unlocking, setUnlocking] = useState(false);
 
   const deriveDoctorName = (p, appts) => {
     if (!p) return "Dr. Maria Sarah L. Manaloto";
@@ -452,6 +455,21 @@ const PatientDetail = () => {
     setDiagnosisValue("");
   };
 
+  const handleUnlockAppointments = async () => {
+    if (!patient) return;
+    try {
+      setUnlocking(true);
+      await patientsAPI.unlockAppointments(patient._id);
+      toast.success("Appointment booking unlocked for this patient");
+      await fetchPatientData();
+    } catch (error) {
+      console.error("Error unlocking appointments:", error);
+      toast.error("Failed to unlock appointments");
+    } finally {
+      setUnlocking(false);
+    }
+  };
+
   const getPatientName = (patient) => {
     if (!patient) return "Unknown Patient";
 
@@ -534,6 +552,8 @@ const PatientDetail = () => {
 
   const patientInfo = getPatientInfo(patient);
   const isPediatric = patient.patientType === "pediatric";
+  const isBookingLocked = !!patient.appointmentLocked;
+  const noShowCount = patient.noShowCount || 0;
 
   return (
     <div className="space-y-6">
@@ -580,6 +600,21 @@ const PatientDetail = () => {
             <Edit className="h-4 w-4" />
             <span>Edit Patient</span>
           </Button>
+          {isBookingLocked && (
+            <Button
+              variant="clinic"
+              onClick={handleUnlockAppointments}
+              disabled={unlocking}
+              className="flex items-center space-x-2"
+            >
+              {unlocking ? (
+                <LoadingSpinner size="sm" />
+              ) : (
+                <Unlock className="h-4 w-4" />
+              )}
+              <span>Unlock Appointment</span>
+            </Button>
+          )}
           <Button
             variant="outline"
             onClick={() => setDeleteModalOpen(true)}
@@ -590,6 +625,32 @@ const PatientDetail = () => {
           </Button>
         </div>
       </div>
+
+      {isBookingLocked && (
+        <div className="p-4 border border-red-200 bg-red-50 rounded-lg flex items-start gap-3">
+          <div className="p-2 bg-red-100 rounded-full">
+            <Lock className="h-4 w-4 text-red-600" />
+          </div>
+          <div className="flex-1">
+            <p className="font-semibold text-red-800">
+              Booking locked after {noShowCount} no-shows.
+            </p>
+            <p className="text-sm text-red-700">
+              This patient cannot book new appointments until unlocked.
+            </p>
+          </div>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={handleUnlockAppointments}
+            disabled={unlocking}
+            className="text-red-700 border-red-200 hover:bg-red-100"
+          >
+            {unlocking ? <LoadingSpinner size="sm" /> : <Unlock className="h-4 w-4 mr-1" />}
+            Unlock
+          </Button>
+        </div>
+      )}
 
       {/* Tabs */}
       <div className="border-b border-gray-200">

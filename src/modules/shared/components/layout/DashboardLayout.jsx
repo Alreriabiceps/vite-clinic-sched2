@@ -2,18 +2,19 @@ import { Outlet, Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import { Button } from '../ui/button';
 import { cn } from '../../lib/utils';
-import { 
-  LayoutDashboard, 
-  Calendar, 
-  Users, 
-  FileText, 
-  Settings, 
+import {
+  LayoutDashboard,
+  Calendar,
+  Users,
+  FileText,
+  Settings,
   LogOut,
   Heart,
   Menu,
   X
 } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { io } from 'socket.io-client';
 
 const navigation = [
   { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
@@ -27,6 +28,52 @@ export default function DashboardLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const { user, logout } = useAuth();
   const location = useLocation();
+  const socketRef = useRef();
+
+  useEffect(() => {
+    // Request notification permission on mount
+    if ('Notification' in window && Notification.permission !== 'granted') {
+      Notification.requestPermission();
+    }
+
+    // Determine socket URL
+    const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+    // Remove /api suffix if present to get the root URL for socket.io
+    const socketUrl = apiUrl.replace(/\/api\/?$/, '');
+
+    // Connect to socket server
+    socketRef.current = io(socketUrl);
+
+    socketRef.current.on('connect', () => {
+      console.log('Connected to socket server');
+    });
+
+    socketRef.current.on('appointment:created', (data) => {
+      if ('Notification' in window && Notification.permission === 'granted') {
+        new Notification('New Appointment Booked', {
+          body: data.message,
+          icon: '/vite.svg', // Default icon
+          tag: 'appointment-created'
+        });
+      }
+    });
+
+    socketRef.current.on('appointment:cancelled', (data) => {
+      if ('Notification' in window && Notification.permission === 'granted') {
+        new Notification('Appointment Cancelled', {
+          body: data.message,
+          icon: '/vite.svg', // Default icon
+          tag: 'appointment-cancelled'
+        });
+      }
+    });
+
+    return () => {
+      if (socketRef.current) {
+        socketRef.current.disconnect();
+      }
+    };
+  }, []);
 
   const handleLogout = async () => {
     await logout();
@@ -36,7 +83,7 @@ export default function DashboardLayout() {
     <div className="flex h-screen bg-off-white">
       {/* Mobile sidebar overlay */}
       {sidebarOpen && (
-        <div 
+        <div
           className="fixed inset-0 z-40 lg:hidden"
           onClick={() => setSidebarOpen(false)}
         >
@@ -131,7 +178,7 @@ export default function DashboardLayout() {
             >
               <Menu className="h-5 w-5 text-charcoal" />
             </button>
-            
+
             <div className="flex items-center gap-4">
               <div className="hidden sm:block">
                 <h2 className="text-lg font-semibold text-charcoal">

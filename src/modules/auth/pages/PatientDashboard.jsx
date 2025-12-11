@@ -33,6 +33,7 @@ import {
   Bell,
   X,
   RefreshCw,
+  Lock,
 } from "lucide-react";
 export default function PatientDashboard() {
   const navigate = useNavigate();
@@ -45,6 +46,8 @@ export default function PatientDashboard() {
   const [unreadCount, setUnreadCount] = useState(0);
   const [clinicSettings, setClinicSettings] = useState(null);
   const [selectedDoctorType, setSelectedDoctorType] = useState(null); // null, 'ob-gyne', or 'pediatric'
+  const isBookingLocked = !!patient?.patientRecord?.appointmentLocked;
+  const noShowCount = patient?.patientRecord?.noShowCount || 0;
 
   useEffect(() => {
     if (!patient && !authLoading) {
@@ -662,27 +665,57 @@ export default function PatientDashboard() {
           </p>
         </div>
 
+        {isBookingLocked && (
+          <div className="mb-6 p-4 border border-red-200 bg-red-50 rounded-lg flex items-start gap-3">
+            <div className="p-2 bg-red-100 rounded-full">
+              <Lock className="h-4 w-4 text-red-600" />
+            </div>
+            <div className="flex-1">
+              <p className="font-semibold text-red-800">
+                Booking locked after {noShowCount} no-shows.
+              </p>
+              <p className="text-sm text-red-700">
+                Please contact the clinic to unlock your appointment booking.
+              </p>
+            </div>
+          </div>
+        )}
+
         {/* Quick Actions */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          <Card className="hover:shadow-lg transition-shadow cursor-pointer bg-off-white border-soft-olive-200">
-            <Link to="/patient/book-appointment">
+          <Card className={`transition-shadow bg-off-white border-soft-olive-200 ${!isBookingLocked ? "hover:shadow-lg cursor-pointer" : "opacity-80"}`}>
+            {isBookingLocked ? (
               <CardContent className="p-6 text-center">
-                <div className="p-3 bg-warm-pink/20 rounded-full w-fit mx-auto mb-4">
-                  <Plus className="h-8 w-8 text-warm-pink" />
+                <div className="p-3 bg-red-100 rounded-full w-fit mx-auto mb-4">
+                  <Lock className="h-8 w-8 text-red-600" />
                 </div>
                 <h3 className="font-semibold text-charcoal mb-2">
-                  Book Appointment
+                  Booking Locked
                 </h3>
-                <p className="text-sm text-muted-gold">
-                  Schedule a new appointment with our doctors
+                <p className="text-sm text-red-700">
+                  Please contact the clinic to unlock booking.
                 </p>
-                {hasPendingAppointment && (
-                  <p className="text-xs text-yellow-600 mt-2 font-medium">
-                    You have pending appointments
-                  </p>
-                )}
               </CardContent>
-            </Link>
+            ) : (
+              <Link to="/patient/book-appointment">
+                <CardContent className="p-6 text-center">
+                  <div className="p-3 bg-warm-pink/20 rounded-full w-fit mx-auto mb-4">
+                    <Plus className="h-8 w-8 text-warm-pink" />
+                  </div>
+                  <h3 className="font-semibold text-charcoal mb-2">
+                    Book Appointment
+                  </h3>
+                  <p className="text-sm text-muted-gold">
+                    Schedule a new appointment with our doctors
+                  </p>
+                  {hasPendingAppointment && (
+                    <p className="text-xs text-yellow-600 mt-2 font-medium">
+                      You have pending appointments
+                    </p>
+                  )}
+                </CardContent>
+              </Link>
+            )}
           </Card>
 
           <Card className="hover:shadow-lg transition-shadow cursor-pointer bg-off-white border-soft-olive-200">
@@ -865,7 +898,7 @@ export default function PatientDashboard() {
                             Clear Filter
                           </button>
                         )}
-                        {!selectedDoctorType && (
+                        {!selectedDoctorType && !isBookingLocked && (
                           <Link
                             to="/patient/book-appointment"
                             className={cn(

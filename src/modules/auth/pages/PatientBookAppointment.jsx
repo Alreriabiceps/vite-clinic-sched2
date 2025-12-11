@@ -11,7 +11,8 @@ import {
   Baby,
   CheckCircle,
   MapPin,
-  Phone
+  Phone,
+  Lock
 } from 'lucide-react';
 
 export default function PatientBookAppointment() {
@@ -37,6 +38,8 @@ export default function PatientBookAppointment() {
       age: ''
     }
   });
+  const isBookingLocked = !!patient?.patientRecord?.appointmentLocked;
+  const noShowCount = patient?.patientRecord?.noShowCount || 0;
 
   useEffect(() => {
     if (!patient && !authLoading) {
@@ -45,6 +48,11 @@ export default function PatientBookAppointment() {
     }
 
     if (patient) {
+      if (isBookingLocked) {
+        setLoading(false);
+        setCheckingAppointments(false);
+        return;
+      }
       checkExistingAppointments();
       fetchDoctors();
       // Pre-fill form with patient info for self appointment
@@ -110,8 +118,11 @@ export default function PatientBookAppointment() {
       const data = extractData(response);
       setDoctors(data.doctors || []);
     } catch (error) {
-      console.error('Error fetching doctors:', error);
-      toast.error('Failed to load doctors');
+      // Suppress CanceledError (expected from request throttling)
+      if (error?.code !== 'ERR_CANCELED' && error?.name !== 'CanceledError' && !error?.silent) {
+        console.error('Error fetching doctors:', error);
+        toast.error('Failed to load doctors');
+      }
     } finally {
       setLoading(false);
     }
@@ -125,9 +136,12 @@ export default function PatientBookAppointment() {
       const data = extractData(response);
       setAvailableDates(data.availableDates || []);
     } catch (error) {
-      console.error('Error fetching available dates:', error);
-      toast.error('Failed to load available dates');
-      setAvailableDates([]);
+      // Suppress CanceledError (expected from request throttling)
+      if (error?.code !== 'ERR_CANCELED' && error?.name !== 'CanceledError' && !error?.silent) {
+        console.error('Error fetching available dates:', error);
+        toast.error('Failed to load available dates');
+        setAvailableDates([]);
+      }
     }
   };
 
@@ -140,9 +154,12 @@ export default function PatientBookAppointment() {
       const data = extractData(response);
       setAvailableSlots(data.slots || []);
     } catch (error) {
-      console.error('Error fetching slots:', error);
-      toast.error('Failed to load available time slots');
-      setAvailableSlots([]);
+      // Suppress CanceledError (expected from request throttling)
+      if (error?.code !== 'ERR_CANCELED' && error?.name !== 'CanceledError' && !error?.silent) {
+        console.error('Error fetching slots:', error);
+        toast.error('Failed to load available time slots');
+        setAvailableSlots([]);
+      }
     }
   };
 
@@ -273,59 +290,88 @@ export default function PatientBookAppointment() {
           <p className="text-muted-gold">Schedule your appointment with our experienced doctors.</p>
         </div>
 
-        {/* Check for existing appointments */}
-        {checkingAppointments ? (
-          <div className="flex justify-center py-8">
-            <LoadingSpinner />
-            <span className="ml-2 text-gray-600">Checking existing appointments...</span>
-          </div>
+        {isBookingLocked ? (
+          <Card className="mb-8 bg-red-50 border-red-200">
+            <CardContent className="p-6">
+              <div className="flex items-start gap-3">
+                <div className="p-3 bg-red-100 rounded-full">
+                  <Lock className="h-6 w-6 text-red-600" />
+                </div>
+                <div className="flex-1">
+                  <h3 className="text-xl font-semibold text-red-800 mb-1">
+                    Booking Locked
+                  </h3>
+                  <p className="text-sm text-red-700">
+                    You have reached {noShowCount} no-shows. Please contact the clinic to unlock booking.
+                  </p>
+                  <div className="mt-4">
+                    <Button
+                      variant="outline"
+                      onClick={() => navigate('/patient/dashboard')}
+                      className="border-red-200 text-red-700 hover:bg-red-100"
+                    >
+                      Back to Dashboard
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
         ) : (
           <>
-            {/* Show warning if there's an existing appointment, but don't block */}
-            {existingAppointment && (
-              <Card className="mb-8 bg-yellow-50 border-yellow-200">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2 text-yellow-800">
-                    <Calendar className="h-5 w-5" />
-                    Existing Appointment Notice
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-                    <div className="flex items-start gap-3">
-                      <div className="p-2 bg-yellow-100 rounded-full">
-                        <Calendar className="h-5 w-5 text-yellow-700" />
-                      </div>
-                      <div className="flex-1">
-                        <h4 className="font-medium text-yellow-900 mb-2">
-                          You have a pending appointment
-                        </h4>
-                        <div className="text-sm text-yellow-800 space-y-1">
-                          <p><strong>Doctor:</strong> {existingAppointment.doctorName || 'Unknown'}</p>
-                          <p><strong>Date:</strong> {new Date(existingAppointment.appointmentDate).toLocaleDateString()}</p>
-                          <p><strong>Time:</strong> {existingAppointment.appointmentTime}</p>
-                          <p><strong>Status:</strong> <span className="capitalize">{existingAppointment.status}</span></p>
+            {/* Check for existing appointments */}
+            {checkingAppointments ? (
+              <div className="flex justify-center py-8">
+                <LoadingSpinner />
+                <span className="ml-2 text-gray-600">Checking existing appointments...</span>
+              </div>
+            ) : (
+              <>
+                {/* Show warning if there's an existing appointment, but don't block */}
+                {existingAppointment && (
+                  <Card className="mb-8 bg-yellow-50 border-yellow-200">
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2 text-yellow-800">
+                        <Calendar className="h-5 w-5" />
+                        Existing Appointment Notice
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                        <div className="flex items-start gap-3">
+                          <div className="p-2 bg-yellow-100 rounded-full">
+                            <Calendar className="h-5 w-5 text-yellow-700" />
+                          </div>
+                          <div className="flex-1">
+                            <h4 className="font-medium text-yellow-900 mb-2">
+                              You have a pending appointment
+                            </h4>
+                            <div className="text-sm text-yellow-800 space-y-1">
+                              <p><strong>Doctor:</strong> {existingAppointment.doctorName || 'Unknown'}</p>
+                              <p><strong>Date:</strong> {new Date(existingAppointment.appointmentDate).toLocaleDateString()}</p>
+                              <p><strong>Time:</strong> {existingAppointment.appointmentTime}</p>
+                              <p><strong>Status:</strong> <span className="capitalize">{existingAppointment.status}</span></p>
+                            </div>
+                            <p className="text-sm text-yellow-700 mt-3">
+                              You can still book additional appointments. Please manage your appointments from the appointments page.
+                            </p>
+                            <div className="mt-4 flex gap-3">
+                              <Button 
+                                variant="outline" 
+                                size="sm"
+                                onClick={() => navigate('/patient/appointments')}
+                                className="border-yellow-300 text-yellow-700 hover:bg-yellow-100"
+                              >
+                                View My Appointments
+                              </Button>
+                            </div>
+                          </div>
                         </div>
-                        <p className="text-sm text-yellow-700 mt-3">
-                          You can still book additional appointments. Please manage your appointments from the appointments page.
-                        </p>
-                        <div className="mt-4 flex gap-3">
-                          <Button 
-                            variant="outline" 
-                            size="sm"
-                            onClick={() => navigate('/patient/appointments')}
-                            className="border-yellow-300 text-yellow-700 hover:bg-yellow-100"
-                          >
-                            View My Appointments
-                          </Button>
-                        </div>
                       </div>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-            <form onSubmit={handleSubmit} className="space-y-8">
+                    </CardContent>
+                  </Card>
+                )}
+                <form onSubmit={handleSubmit} className="space-y-8">
                   {/* Step 1: Select Patient Type */}
               <Card>
             <CardHeader>
@@ -718,6 +764,8 @@ export default function PatientBookAppointment() {
                 </Card>
               )}
             </form>
+              </>
+            )}
           </>
         )}
       </main>

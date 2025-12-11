@@ -1,9 +1,9 @@
 import axios from 'axios';
 
 // API Base URL configuration
-const API_BASE_URL = import.meta.env.VITE_API_URL || 
-  (import.meta.env.MODE === 'development' 
-    ? 'http://localhost:8000/api' 
+const API_BASE_URL = import.meta.env.VITE_API_URL ||
+  (import.meta.env.MODE === 'development'
+    ? 'http://localhost:8000/api'
     : 'https://express-clinic-sched2.onrender.com/api');
 
 // Ensure the URL always ends with /api
@@ -14,21 +14,45 @@ const FINAL_API_URL = normalizedURL;
 const pendingRequests = new Map();
 const REQUEST_COOLDOWN = 1000; // 1 second cooldown between identical requests
 
+// Rate limiting: Track request timing to avoid 429 errors
+const requestTimestamps = [];
+const MAX_REQUESTS_PER_SECOND = 30; // Maximum requests per second
+const RATE_LIMIT_WINDOW = 1000; // 1 second window
+
 // Generate a unique key for a request
 const getRequestKey = (config) => {
   return `${config.method?.toUpperCase()}_${config.url}_${JSON.stringify(config.params || {})}`;
 };
 
-// Throttle interceptor to prevent duplicate requests
-const throttleInterceptor = (config) => {
+// Throttle interceptor to prevent duplicate requests and rate limiting
+const throttleInterceptor = async (config) => {
   const requestKey = getRequestKey(config);
   const now = Date.now();
-  
-  // Check if same request was made recently
+
+  // Rate limiting: Check if we're making too many requests too quickly
+  requestTimestamps.push(now);
+
+  // Remove timestamps older than the rate limit window
+  const recentTimestamps = requestTimestamps.filter(
+    timestamp => now - timestamp < RATE_LIMIT_WINDOW
+  );
+  requestTimestamps.length = 0;
+  requestTimestamps.push(...recentTimestamps);
+
+  // If we're at the limit, wait before proceeding
+  if (recentTimestamps.length >= MAX_REQUESTS_PER_SECOND) {
+    const oldestTimestamp = recentTimestamps[0];
+    const waitTime = RATE_LIMIT_WINDOW - (now - oldestTimestamp) + 100; // Add buffer
+    if (waitTime > 0 && waitTime < 2000) {
+      await new Promise(resolve => setTimeout(resolve, waitTime));
+    }
+  }
+
+  // Check if same request was made recently (deduplication)
   if (pendingRequests.has(requestKey)) {
     const lastRequestTime = pendingRequests.get(requestKey);
-    const timeSinceLastRequest = now - lastRequestTime;
-    
+    const timeSinceLastRequest = Date.now() - lastRequestTime;
+
     if (timeSinceLastRequest < REQUEST_COOLDOWN) {
       // Request is too soon, create an abort controller to cancel it
       const controller = new AbortController();
@@ -38,17 +62,18 @@ const throttleInterceptor = (config) => {
       return config;
     }
   }
-  
+
   // Update last request time
-  pendingRequests.set(requestKey, now);
-  
+  pendingRequests.set(requestKey, Date.now());
+
   // Clean up old entries (older than 5 seconds)
+  const currentTime = Date.now();
   for (const [key, time] of pendingRequests.entries()) {
-    if (now - time > 5000) {
+    if (currentTime - time > 5000) {
       pendingRequests.delete(key);
     }
   }
-  
+
   return config;
 };
 
@@ -91,12 +116,20 @@ api.interceptors.request.use(
 api.interceptors.response.use(
   (response) => response,
   (error) => {
+    // Suppress CanceledError messages (expected from request throttling)
+    if (error?.code === 'ERR_CANCELED' || error?.name === 'CanceledError') {
+      // Create a silent rejection that won't trigger error handlers
+      return Promise.reject({ ...error, silent: true });
+    }
+
     if (error.response?.status === 401) {
-      // Don't redirect if we're already on the login page or if it's a login request
+      // Don't redirect if we're on patient routes or login pages
       const isLoginRequest = error.config?.url?.includes('/auth/login');
       const isOnLoginPage = window.location.pathname === '/login';
+      const isOnPatientRoute = window.location.pathname.startsWith('/patient');
       
-      if (!isLoginRequest && !isOnLoginPage) {
+      // Only redirect admin auth errors if we're NOT on patient routes
+      if (!isLoginRequest && !isOnLoginPage && !isOnPatientRoute) {
         localStorage.removeItem('clinic_token');
         localStorage.removeItem('clinic_refresh_token');
         window.location.href = '/login';
@@ -137,6 +170,12 @@ patientApi.interceptors.request.use(
 patientApi.interceptors.response.use(
   (response) => response,
   (error) => {
+    // Suppress CanceledError messages (expected from request throttling)
+    if (error?.code === 'ERR_CANCELED' || error?.name === 'CanceledError') {
+      // Create a silent rejection that won't trigger error handlers
+      return Promise.reject({ ...error, silent: true });
+    }
+
     if (error.response?.status === 401) {
       // Don't redirect if we're already on the login page or if it's a login request
       const isLoginRequest = error.config?.url?.includes('/patient/auth/login');
@@ -176,9 +215,9 @@ export const appointmentsAPI = {
   reschedule: (id, data) => api.patch(`/appointments/${id}/reschedule`, data),
   approveCancellation: (id, data) => api.patch(`/appointments/${id}/approve-cancellation`, data),
   rejectCancellation: (id, data) => api.patch(`/appointments/${id}/reject-cancellation`, data),
-  getDailyAppointments: (doctorName, date) => 
-    api.get('/appointments/daily', { 
-      params: { doctorName, date } 
+  getDailyAppointments: (doctorName, date) =>
+    api.get('/appointments/daily', {
+      params: { doctorName, date }
     }),
 };
 
@@ -199,6 +238,7 @@ export const patientsAPI = {
   updateConsultation: (patientId, consultationId, data) => api.put(`/patients/${patientId}/consultations/${consultationId}`, data),
   deleteConsultation: (patientId, consultationId) => api.delete(`/patients/${patientId}/consultations/${consultationId}`),
   addNote: (patientId, data) => api.post(`/patients/${patientId}/notes`, data),
+  unlockAppointments: (patientId) => api.patch(`/patients/${patientId}/unlock-appointments`),
 };
 
 // Reports API

@@ -112,7 +112,10 @@ export default function Patients() {
       
       setPatientLastVisits(lastVisits);
     } catch (error) {
-      console.error("Error fetching last visits:", error);
+      // Suppress CanceledError (expected from request throttling)
+      if (error?.code !== 'ERR_CANCELED' && error?.name !== 'CanceledError' && !error?.silent) {
+        console.error("Error fetching last visits:", error);
+      }
     }
   };
 
@@ -146,9 +149,12 @@ export default function Patients() {
       setTotalPages(data.pagination?.pages || 1);
       setHasMore(currentPage < (data.pagination?.pages || 1));
     } catch (error) {
-      console.error("Error fetching patients:", error);
-      setError("Failed to load patients");
-      setPatients([]);
+      // Suppress CanceledError (expected from request throttling)
+      if (error?.code !== 'ERR_CANCELED' && error?.name !== 'CanceledError' && !error?.silent) {
+        console.error("Error fetching patients:", error);
+        setError("Failed to load patients");
+        setPatients([]);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -167,19 +173,25 @@ export default function Patients() {
         obgynePatients: data.obgynePatients || 0,
       });
     } catch (error) {
-      console.error("Error fetching stats:", error);
-      // Fallback to search method if stats endpoint fails
-      try {
-        const response = await patientsAPI.search({ limit: 1 });
-        const total = response.data?.pagination?.total || 0;
+      // Suppress CanceledError (expected from request throttling)
+      if (error?.code !== 'ERR_CANCELED' && error?.name !== 'CanceledError' && !error?.silent) {
+        console.error("Error fetching stats:", error);
+        // Fallback to search method if stats endpoint fails
+        try {
+          const response = await patientsAPI.search({ limit: 1 });
+          const total = response.data?.pagination?.total || 0;
 
-        setStats({
-          totalPatients: total,
-          pediatricPatients: 0,
-          obgynePatients: 0,
-        });
-      } catch (fallbackError) {
-        console.error("Fallback stats error:", fallbackError);
+          setStats({
+            totalPatients: total,
+            pediatricPatients: 0,
+            obgynePatients: 0,
+          });
+        } catch (fallbackError) {
+          // Suppress CanceledError in fallback too
+          if (fallbackError?.code !== 'ERR_CANCELED' && fallbackError?.name !== 'CanceledError' && !fallbackError?.silent) {
+            console.error("Fallback stats error:", fallbackError);
+          }
+        }
       }
     }
   };
@@ -204,8 +216,11 @@ export default function Patients() {
       setTotalPages(data.pagination?.pages || 1);
       setCurrentPage(1);
     } catch (error) {
-      console.error("Error searching patients:", error);
-      setError("Search failed");
+      // Suppress CanceledError (expected from request throttling)
+      if (error?.code !== 'ERR_CANCELED' && error?.name !== 'CanceledError' && !error?.silent) {
+        console.error("Error searching patients:", error);
+        setError("Search failed");
+      }
     } finally {
       setIsSearching(false);
     }

@@ -9,6 +9,7 @@ import {
   appointmentsAPI,
   patientsAPI,
   settingsAPI,
+  availabilityAPI,
   extractData,
   handleAPIError,
   toast,
@@ -39,6 +40,7 @@ import {
   ChevronRight,
   Archive,
   RefreshCw,
+  Printer,
 } from "lucide-react";
 import { Calendar, dateFnsLocalizer } from "react-big-calendar";
 import "react-big-calendar/lib/css/react-big-calendar.css";
@@ -284,9 +286,9 @@ export default function Appointments() {
   }, []);
   // const [filter, setFilter] = useState('all'); // Removed - using statusTab and dateRange instead
   const [searchTerm, setSearchTerm] = useState("");
-  const [viewMode, setViewMode] = useState("table"); // 'table' or 'calendar'
-  const [statusFilter, setStatusFilter] = useState("all"); // 'active', 'completed', 'all' (removed 'today')
-  const [dateRange, setDateRange] = useState("all"); // 'week', 'month', 'all' (removed redundant 'today')
+  const [viewMode, setViewMode] = useState("table"); // 'table', 'calendar', or 'timeblocks'
+  const [statusFilter, setStatusFilter] = useState("all"); // 'active', 'completed', 'all'
+  const [dateRange, setDateRange] = useState("all"); // 'today', 'week', 'month', 'all'
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage] = useState(10); // Fixed items per page
   // Calendar current view (kept for calendar mode)
@@ -319,6 +321,7 @@ export default function Appointments() {
   // Confirmation modals
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [showCompleteModal, setShowCompleteModal] = useState(false);
+  const [showNoShowModal, setShowNoShowModal] = useState(false);
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [actionAppointment, setActionAppointment] = useState(null);
   const [selectedRescheduleDate, setSelectedRescheduleDate] = useState("");
@@ -330,6 +333,11 @@ export default function Appointments() {
   const [showDateModal, setShowDateModal] = useState(false);
   const [selectedDateAppointments, setSelectedDateAppointments] = useState([]);
   const [selectedModalDate, setSelectedModalDate] = useState(null);
+
+  // Doctor time blocks
+  const [doctorTimeBlocks, setDoctorTimeBlocks] = useState({});
+  const [loadingTimeBlocks, setLoadingTimeBlocks] = useState(false);
+  // Removed timeBlockPeriod state, using dateRange instead
 
   // Table column resizing
   const [columnWidths, setColumnWidths] = useState({
@@ -540,19 +548,25 @@ export default function Appointments() {
       return false;
     }
 
+    // Normalize doctor names for comparison (trim whitespace)
+    const normalizedAppointmentName = appointmentDoctorName.trim();
+    
     // Map appointment doctor name to settings doctor name
-    const mappedName = mapDoctorNameToSettings(appointmentDoctorName);
+    const mappedName = mapDoctorNameToSettings(normalizedAppointmentName);
 
     // Check if mapped name or original name is in filter
+    // API enum values: 'Dr. Maria Sarah L. Manaloto', 'Dr. Shara Laine S. Vino'
     return (
-      filter.includes(appointmentDoctorName) ||
+      filter.includes(normalizedAppointmentName) ||
       filter.includes(mappedName) ||
       filter.some((filterName) => {
-        const filterMapped = mapDoctorNameToSettings(filterName);
+        const normalizedFilterName = filterName.trim();
+        const filterMapped = mapDoctorNameToSettings(normalizedFilterName);
         return (
           filterMapped === mappedName ||
-          appointmentDoctorName.includes(filterName) ||
-          filterName.includes(appointmentDoctorName)
+          normalizedAppointmentName === normalizedFilterName ||
+          normalizedAppointmentName.includes(normalizedFilterName) ||
+          normalizedFilterName.includes(normalizedAppointmentName)
         );
       })
     );
@@ -561,6 +575,7 @@ export default function Appointments() {
   // Fetch clinic settings only once on mount
   useEffect(() => {
     fetchClinicSettings();
+    fetchDoctorTimeBlocks();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -569,6 +584,14 @@ export default function Appointments() {
     fetchAppointments();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [viewMode]); // Only refetch when view mode changes
+
+  // Fetch doctor time blocks when dateRange changes
+  useEffect(() => {
+    fetchDoctorTimeBlocks();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dateRange]);
+
+
 
   // Listen for clinic settings changes
   useEffect(() => {
@@ -627,38 +650,293 @@ export default function Appointments() {
   const fetchAppointments = async () => {
     try {
       setLoading(true);
-      const _today = new Date().toISOString().split("T")[0];
 
+      // Fetch all appointments - API supports pagination but we fetch all for client-side filtering
+      // API accepts: page, limit, date, status, doctorType, doctorName
       let params = {
-        // Fetch all appointments - no limit to ensure all data is available
-        // Frontend will handle filtering by date range
+        limit: 1000, // Fetch large number to get all appointments
+        page: 1
       };
 
       const response = await appointmentsAPI.getAll(params);
       const data = extractData(response);
-      console.log("Fetched appointments:", data.appointments);
-      if (data.appointments && data.appointments.length > 0) {
-        console.log("Sample appointment structure:", data.appointments[0]);
+      
+      // Handle different response structures
+      const appointmentsList = data?.appointments || data?.data?.appointments || [];
+      
+      console.log("Fetched appointments:", appointmentsList.length, "total");
+      
+      if (appointmentsList.length > 0) {
+        console.log("Sample appointment structure:", {
+          id: appointmentsList[0]._id,
+          patientName: appointmentsList[0].patientName,
+          doctorName: appointmentsList[0].doctorName,
+          appointmentDate: appointmentsList[0].appointmentDate,
+          appointmentTime: appointmentsList[0].appointmentTime,
+          status: appointmentsList[0].status,
+          bookingSource: appointmentsList[0].bookingSource
+        });
 
         // Extract all unique doctor names from appointments for reference
-        // Don't auto-update doctor filter - only update when user clicks filter buttons
-        // This is just for logging/debugging purposes
         const uniqueDoctorNames = [
           ...new Set(
-            data.appointments.map((apt) => apt.doctorName).filter(Boolean)
+            appointmentsList.map((apt) => apt.doctorName).filter(Boolean)
           ),
         ];
         console.log(
           "Available doctor names in appointments:",
           uniqueDoctorNames
         );
+        
+        // Verify status values match API enum
+        const uniqueStatuses = [
+          ...new Set(
+            appointmentsList.map((apt) => apt.status).filter(Boolean)
+          ),
+        ];
+        console.log("Available status values:", uniqueStatuses);
+      } else {
+        console.warn("No appointments found in API response");
       }
-      setAppointments(data.appointments || []);
+      
+      setAppointments(appointmentsList);
     } catch (error) {
-      console.error("Error fetching appointments:", error);
-      toast.error("Failed to load appointments");
+      // Suppress CanceledError (expected from request throttling)
+      if (error?.code !== 'ERR_CANCELED' && error?.name !== 'CanceledError' && !error?.silent) {
+        console.error("Error fetching appointments:", error);
+        toast.error("Failed to load appointments");
+        // Set empty array on error to prevent undefined issues
+        setAppointments([]);
+      }
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchDoctorTimeBlocks = async () => {
+    try {
+      setLoadingTimeBlocks(true);
+      const doctors = getDoctorNames();
+      const timeBlocksData = {};
+
+      // Map 'all' to 'month' for time blocks context
+      const period = dateRange === 'all' ? 'month' : dateRange;
+
+      if (period === "today") {
+        // Fetch today's slots
+        const today = new Date().toISOString().split("T")[0];
+        for (const doctorName of doctors) {
+          try {
+            const response = await availabilityAPI.getSlots({
+              doctorName,
+              date: today,
+            });
+            const data = extractData(response);
+            timeBlocksData[doctorName] = {
+              period: "today",
+              date: today,
+              ...data,
+            };
+          } catch (error) {
+            // Suppress CanceledError (expected from request throttling)
+            if (error?.code !== 'ERR_CANCELED' && error?.name !== 'CanceledError' && !error?.silent) {
+              console.error(`Error fetching time blocks for ${doctorName}:`, error);
+            }
+          }
+        }
+      } else if (period === "week") {
+        // Fetch week's summary
+        const today = new Date();
+        const startOfWeek = new Date(today);
+        const dayOfWeek = today.getDay();
+        startOfWeek.setDate(today.getDate() - dayOfWeek); // Sunday
+        const endOfWeek = new Date(startOfWeek);
+        endOfWeek.setDate(startOfWeek.getDate() + 6); // Saturday
+
+        for (const doctorName of doctors) {
+          try {
+            const response = await availabilityAPI.getSummary({
+              doctorName,
+              startDate: startOfWeek.toISOString().split("T")[0],
+              endDate: endOfWeek.toISOString().split("T")[0],
+            });
+            const data = extractData(response);
+            const summary = data.availabilitySummary[doctorName] || {};
+
+            // Aggregate data across the week
+            let totalSlots = 0;
+            let totalAvailable = 0;
+            let totalBooked = 0;
+            const allDates = Object.keys(summary).sort();
+
+            allDates.forEach((date) => {
+              const dayData = summary[date];
+              if (dayData.workingDay) {
+                totalSlots += dayData.totalSlots || 0;
+                totalAvailable += dayData.availableSlots || 0;
+                totalBooked += dayData.bookedSlots || 0;
+              }
+            });
+
+            // Fetch detailed slots for each working day with rate limiting
+            const dailySlots = {};
+            const workingDates = allDates.filter((date) => {
+              const dayData = summary[date];
+              return dayData && dayData.workingDay;
+            });
+
+            // Process requests in batches with delays to avoid rate limiting
+            const batchSize = 5;
+            const delayBetweenBatches = 500; // 500ms delay between batches
+
+            for (let i = 0; i < workingDates.length; i += batchSize) {
+              const batch = workingDates.slice(i, i + batchSize);
+
+              // Process batch in parallel
+              await Promise.all(
+                batch.map(async (date) => {
+                  try {
+                    const slotsResponse = await availabilityAPI.getSlots({
+                      doctorName,
+                      date: date,
+                    });
+                    const slotsData = extractData(slotsResponse);
+                    dailySlots[date] = slotsData;
+                  } catch (error) {
+                    // Suppress CanceledError (expected from request throttling)
+                    if (error?.code !== 'ERR_CANCELED' && error?.name !== 'CanceledError' && !error?.silent) {
+                      console.error(`Error fetching slots for ${date}:`, error);
+                    }
+                    // Continue even if one request fails
+                  }
+                })
+              );
+
+              // Add delay between batches (except for the last batch)
+              if (i + batchSize < workingDates.length) {
+                await new Promise(resolve => setTimeout(resolve, delayBetweenBatches));
+              }
+            }
+
+            timeBlocksData[doctorName] = {
+              period: "week",
+              startDate: startOfWeek.toISOString().split("T")[0],
+              endDate: endOfWeek.toISOString().split("T")[0],
+              totalSlots,
+              availableSlots: totalAvailable,
+              bookedSlots: totalBooked,
+              dailySummary: summary,
+              dailySlots: dailySlots,
+              available: totalSlots > 0,
+              reason: totalSlots > 0 ? "" : "No schedule available for this week",
+            };
+          } catch (error) {
+            // Suppress CanceledError (expected from request throttling)
+            if (error?.code !== 'ERR_CANCELED' && error?.name !== 'CanceledError' && !error?.silent) {
+              console.error(`Error fetching week time blocks for ${doctorName}:`, error);
+            }
+          }
+        }
+      } else if (period === "month") {
+        // Fetch month's summary
+        const today = new Date();
+        const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+        const endOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+
+        for (const doctorName of doctors) {
+          try {
+            const response = await availabilityAPI.getSummary({
+              doctorName,
+              startDate: startOfMonth.toISOString().split("T")[0],
+              endDate: endOfMonth.toISOString().split("T")[0],
+            });
+            const data = extractData(response);
+            const summary = data.availabilitySummary[doctorName] || {};
+
+            // Aggregate data across the month
+            let totalSlots = 0;
+            let totalAvailable = 0;
+            let totalBooked = 0;
+            const allDates = Object.keys(summary).sort();
+
+            allDates.forEach((date) => {
+              const dayData = summary[date];
+              if (dayData.workingDay) {
+                totalSlots += dayData.totalSlots || 0;
+                totalAvailable += dayData.availableSlots || 0;
+                totalBooked += dayData.bookedSlots || 0;
+              }
+            });
+
+            // Fetch detailed slots for each working day with rate limiting
+            const dailySlots = {};
+            const workingDates = allDates.filter((date) => {
+              const dayData = summary[date];
+              return dayData && dayData.workingDay;
+            });
+
+            // Process requests in batches with delays to avoid rate limiting
+            const batchSize = 5;
+            const delayBetweenBatches = 500; // 500ms delay between batches
+
+            for (let i = 0; i < workingDates.length; i += batchSize) {
+              const batch = workingDates.slice(i, i + batchSize);
+
+              // Process batch in parallel
+              await Promise.all(
+                batch.map(async (date) => {
+                  try {
+                    const slotsResponse = await availabilityAPI.getSlots({
+                      doctorName,
+                      date: date,
+                    });
+                    const slotsData = extractData(slotsResponse);
+                    dailySlots[date] = slotsData;
+                  } catch (error) {
+                    // Suppress CanceledError (expected from request throttling)
+                    if (error?.code !== 'ERR_CANCELED' && error?.name !== 'CanceledError' && !error?.silent) {
+                      console.error(`Error fetching slots for ${date}:`, error);
+                    }
+                    // Continue even if one request fails
+                  }
+                })
+              );
+
+              // Add delay between batches (except for the last batch)
+              if (i + batchSize < workingDates.length) {
+                await new Promise(resolve => setTimeout(resolve, delayBetweenBatches));
+              }
+            }
+
+            timeBlocksData[doctorName] = {
+              period: "month",
+              startDate: startOfMonth.toISOString().split("T")[0],
+              endDate: endOfMonth.toISOString().split("T")[0],
+              totalSlots,
+              availableSlots: totalAvailable,
+              bookedSlots: totalBooked,
+              dailySummary: summary,
+              dailySlots: dailySlots,
+              available: totalSlots > 0,
+              reason: totalSlots > 0 ? "" : "No schedule available for this month",
+            };
+          } catch (error) {
+            // Suppress CanceledError (expected from request throttling)
+            if (error?.code !== 'ERR_CANCELED' && error?.name !== 'CanceledError' && !error?.silent) {
+              console.error(`Error fetching month time blocks for ${doctorName}:`, error);
+            }
+          }
+        }
+      }
+
+      setDoctorTimeBlocks(timeBlocksData);
+    } catch (error) {
+      // Suppress CanceledError (expected from request throttling)
+      if (error?.code !== 'ERR_CANCELED' && error?.name !== 'CanceledError' && !error?.silent) {
+        console.error("Error fetching doctor time blocks:", error);
+      }
+    } finally {
+      setLoadingTimeBlocks(false);
     }
   };
 
@@ -702,6 +980,8 @@ export default function Appointments() {
         return "bg-orange-100 text-orange-700";
       case "reschedule_pending":
         return "bg-blue-100 text-blue-700";
+      case "no-show":
+        return "bg-purple-100 text-purple-700";
       default:
         return "bg-gray-100 text-gray-700";
     }
@@ -723,6 +1003,8 @@ export default function Appointments() {
         return <Clock className="h-4 w-4" />;
       case "reschedule_pending":
         return <RefreshCw className="h-4 w-4" />;
+      case "no-show":
+        return <AlertTriangle className="h-4 w-4" />;
       default:
         return <AlertTriangle className="h-4 w-4" />;
     }
@@ -750,6 +1032,10 @@ export default function Appointments() {
         .muted { color: #6b7280; }
         .summary { margin-top: 6px; font-size: 12px; }
         .no-show { color: #7c3aed; font-weight: 600; }
+        @media print {
+          body { padding: 8px; }
+          table { page-break-inside: avoid; }
+        }
       </style>`;
 
     const sections = Object.entries(groupedByDoctor)
@@ -765,9 +1051,7 @@ export default function Appointments() {
           <h2>${doctor}</h2>
           <div class="summary">
             Total: ${rows.length} &nbsp; • &nbsp;
-            <span class="no-show">No-show: ${noShows.length}${
-          noShows.length > 0 ? ` (${noShowNames.join(", ")})` : ""
-        }</span>
+            <span class="no-show">No-show: ${noShows.length}${noShows.length > 0 ? ` (${noShowNames.join(", ")})` : ""}</span>
           </div>
           <table>
             <thead>
@@ -782,26 +1066,35 @@ export default function Appointments() {
             </thead>
             <tbody>
               ${rows
-                .map(
-                  (r) => `
+                .map((r) => {
+                  // Format date correctly to avoid timezone issues
+                  let formattedDate = "";
+                  if (r.appointmentDate) {
+                    try {
+                      if (typeof r.appointmentDate === "string") {
+                        const datePart = r.appointmentDate.split("T")[0];
+                        const [year, month, day] = datePart.split("-");
+                        if (year && month && day) {
+                          formattedDate = new Date(parseInt(year, 10), parseInt(month, 10) - 1, parseInt(day, 10)).toLocaleDateString();
+                        }
+                      } else {
+                        formattedDate = new Date(r.appointmentDate).toLocaleDateString();
+                      }
+                    } catch (error) {
+                      formattedDate = "";
+                    }
+                  }
+                  return `
                 <tr>
-                  <td>${
-                    (r.appointmentDate &&
-                      new Date(r.appointmentDate).toLocaleDateString()) ||
-                    ""
-                  }</td>
+                  <td>${formattedDate}</td>
                   <td>${r.appointmentTime || ""}</td>
                   <td>${r.patientName || r._patientName || ""}</td>
                   <td>${(r.serviceType || "").replace(/_/g, " ")}</td>
                   <td>${r.status || ""}</td>
-                  <td>${
-                    (r.contactInfo && r.contactInfo.primaryPhone) ||
-                    r.contactNumber ||
-                    ""
-                  }</td>
+                  <td>${(r.contactInfo && r.contactInfo.primaryPhone) || r.contactNumber || ""}</td>
                 </tr>
-              `
-                )
+              `;
+                })
                 .join("")}
             </tbody>
           </table>
@@ -817,41 +1110,73 @@ export default function Appointments() {
   const handlePrint = (mode) => {
     // Determine date window independent of on-screen date filter
     const today = new Date();
-    const startOfToday = new Date(
-      today.getFullYear(),
-      today.getMonth(),
-      today.getDate()
-    );
-    const endOfToday = new Date(
-      today.getFullYear(),
-      today.getMonth(),
-      today.getDate(),
-      23,
-      59,
-      59,
-      999
-    );
-    const weekStart = new Date(startOfToday);
-    weekStart.setDate(startOfToday.getDate() - startOfToday.getDay());
+    today.setHours(0, 0, 0, 0);
+    
+    const startOfToday = new Date(today);
+    const endOfToday = new Date(today);
+    endOfToday.setHours(23, 59, 59, 999);
+    
+    const weekStart = new Date(today);
+    const dayOfWeek = today.getDay();
+    weekStart.setDate(today.getDate() - dayOfWeek); // Sunday
     const weekEnd = new Date(weekStart);
-    weekEnd.setDate(weekStart.getDate() + 6);
+    weekEnd.setDate(weekStart.getDate() + 6); // Saturday
+    weekEnd.setHours(23, 59, 59, 999);
+    
+    const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+    const monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+    monthEnd.setHours(23, 59, 59, 999);
 
     // Start from full dataset then apply doctor/status/search filters, then date window for print
     const base = appointments
       .filter((a) => {
+        // Search filter
         const nameMatch =
           !searchTerm ||
           getPatientName(a).toLowerCase().includes(searchTerm.toLowerCase());
-        const doctorMatch = doctorFilter.includes(a.doctorName);
+        
+        // Doctor filter - empty array means show all
+        const doctorMatch = doctorFilter.length === 0 || matchesDoctorFilter(a.doctorName, doctorFilter);
+        
+        // Status filter
         const statusMatch =
           statusFilter === "all" ||
           (a.status && a.status.toLowerCase() === statusFilter);
+        
         return nameMatch && doctorMatch && statusMatch;
       })
       .filter((a) => {
-        const d = new Date(a.appointmentDate);
-        if (mode === "day") return d >= startOfToday && d <= endOfToday;
-        if (mode === "week") return d >= weekStart && d <= weekEnd;
+        // Parse appointment date correctly to avoid timezone issues
+        if (!a.appointmentDate) return false;
+        
+        let appointmentDate;
+        try {
+          if (typeof a.appointmentDate === "string") {
+            const datePart = a.appointmentDate.split("T")[0];
+            const [year, month, day] = datePart.split("-");
+            if (!year || !month || !day) return false;
+            appointmentDate = new Date(parseInt(year, 10), parseInt(month, 10) - 1, parseInt(day, 10));
+            if (isNaN(appointmentDate.getTime())) return false;
+          } else {
+            appointmentDate = new Date(a.appointmentDate);
+            if (isNaN(appointmentDate.getTime())) return false;
+          }
+          appointmentDate.setHours(0, 0, 0, 0);
+        } catch (error) {
+          return false;
+        }
+        
+        // Filter by date range based on mode
+        if (mode === "day") {
+          return appointmentDate >= startOfToday && appointmentDate <= endOfToday;
+        }
+        if (mode === "week") {
+          return appointmentDate >= weekStart && appointmentDate <= weekEnd;
+        }
+        if (mode === "month") {
+          return appointmentDate >= monthStart && appointmentDate <= monthEnd;
+        }
+        // "all" mode - no date filtering
         return true;
       });
 
@@ -876,8 +1201,19 @@ export default function Appointments() {
       return acc;
     }, {});
 
+    // Check if there's any data to print
+    if (Object.keys(grouped).length === 0) {
+      toast.error(`No appointments found for ${mode === "day" ? "today" : mode === "week" ? "this week" : mode === "month" ? "this month" : "all appointments"} with the selected filters.`);
+      return;
+    }
+
     // Range label
-    const label = mode === "week" ? "This Week" : "Today";
+    let label;
+    if (mode === "day") label = "Today";
+    else if (mode === "week") label = "This Week";
+    else if (mode === "month") label = "This Month";
+    else label = "All Appointments";
+    
     const html = buildPrintHtml(label, grouped);
     printHtml(html);
   };
@@ -995,17 +1331,25 @@ export default function Appointments() {
       doctorFilter
     );
 
-    // Status filtering (exact match for segmented control)
+    // Status filtering - match API enum values exactly
+    // API statuses: 'scheduled', 'confirmed', 'completed', 'cancelled', 'no-show', 'rescheduled'
     const matchesStatus = (() => {
       if (statusFilter === "all") return true;
-      if (statusFilter === "cancelled") {
-        // Show both cancelled and cancellation_pending in cancelled filter
-        const status = appointment.status?.toLowerCase();
-        return status === "cancelled" || status === "cancellation_pending";
+      if (!appointment.status) return false;
+      
+      // Normalize status values (handle case differences)
+      const appointmentStatus = appointment.status.toLowerCase().trim();
+      const filterStatus = statusFilter.toLowerCase().trim();
+      
+      // Handle cancelled filter - show both 'cancelled' and any cancellation-related statuses
+      if (filterStatus === "cancelled") {
+        return appointmentStatus === "cancelled" || 
+               appointmentStatus === "cancellation_pending" ||
+               appointmentStatus.includes("cancel");
       }
-      return (
-        appointment.status && appointment.status.toLowerCase() === statusFilter
-      );
+      
+      // Exact match for other statuses
+      return appointmentStatus === filterStatus;
     })();
 
     // Date range filtering - "all" shows everything (past, present, future)
@@ -1015,52 +1359,79 @@ export default function Appointments() {
     }
 
     // Parse appointment date and normalize to start of day
-    const appointmentDateStr = appointment.appointmentDate;
-    if (!appointmentDateStr) {
+    // Handle both Date objects and ISO strings from API
+    if (!appointment.appointmentDate) {
       return false; // Skip appointments without dates
     }
 
     let appointmentDate;
-    if (typeof appointmentDateStr === "string") {
-      // Handle date string format (e.g., "2025-12-09" or "2025-12-09T00:00:00.000Z")
-      const datePart = appointmentDateStr.split("T")[0];
-      const [year, month, day] = datePart.split("-");
-      appointmentDate = new Date(
-        parseInt(year),
-        parseInt(month) - 1,
-        parseInt(day)
-      );
-    } else {
-      appointmentDate = new Date(appointmentDateStr);
+    try {
+      // Handle different date formats from API
+      if (appointment.appointmentDate instanceof Date) {
+        // Already a Date object
+        appointmentDate = new Date(appointment.appointmentDate);
+      } else if (typeof appointment.appointmentDate === "string") {
+        // Handle ISO string format (e.g., "2025-12-09" or "2025-12-09T00:00:00.000Z")
+        const datePart = appointment.appointmentDate.split("T")[0];
+        const [year, month, day] = datePart.split("-");
+        if (!year || !month || !day) {
+          return false; // Invalid date format
+        }
+        appointmentDate = new Date(
+          parseInt(year, 10),
+          parseInt(month, 10) - 1,
+          parseInt(day, 10)
+        );
+      } else {
+        // Try to parse as Date
+        appointmentDate = new Date(appointment.appointmentDate);
+      }
+
+      // Check if date is valid
+      if (isNaN(appointmentDate.getTime())) {
+        console.warn("Invalid appointment date:", appointment.appointmentDate, appointment._id);
+        return false;
+      }
+
+      // Normalize to start of day (UTC to avoid timezone issues)
+      appointmentDate.setUTCHours(0, 0, 0, 0);
+    } catch (error) {
+      console.error("Error parsing appointment date:", appointment.appointmentDate, error, appointment._id);
+      return false; // Skip appointments with invalid dates
     }
 
-    // Normalize to start of day
-    appointmentDate.setHours(0, 0, 0, 0);
-
+    // Use UTC dates for consistent comparison
     const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    today.setUTCHours(0, 0, 0, 0);
 
     let matchesDateRange = false;
 
-    if (dateRange === "week") {
-      // Get start of week (Sunday = 0)
+    if (dateRange === "today") {
+      // Compare UTC dates
+      matchesDateRange =
+        appointmentDate.getUTCDate() === today.getUTCDate() &&
+        appointmentDate.getUTCMonth() === today.getUTCMonth() &&
+        appointmentDate.getUTCFullYear() === today.getUTCFullYear();
+    } else if (dateRange === "week") {
+      // Get start of week (Sunday = 0) in UTC
       const weekStart = new Date(today);
-      const dayOfWeek = today.getDay();
-      weekStart.setDate(today.getDate() - dayOfWeek);
-      weekStart.setHours(0, 0, 0, 0);
+      const dayOfWeek = today.getUTCDay();
+      weekStart.setUTCDate(today.getUTCDate() - dayOfWeek);
+      weekStart.setUTCHours(0, 0, 0, 0);
 
-      // Get end of week (Saturday)
+      // Get end of week (Saturday) in UTC
       const weekEnd = new Date(weekStart);
-      weekEnd.setDate(weekStart.getDate() + 6);
-      weekEnd.setHours(23, 59, 59, 999);
+      weekEnd.setUTCDate(weekStart.getUTCDate() + 6);
+      weekEnd.setUTCHours(23, 59, 59, 999);
 
       matchesDateRange =
-        appointmentDate >= weekStart && appointmentDate <= weekEnd;
+        appointmentDate.getTime() >= weekStart.getTime() && 
+        appointmentDate.getTime() <= weekEnd.getTime();
     } else if (dateRange === "month") {
-      // Check if appointment is in current month and year
+      // Check if appointment is in current month and year (UTC)
       matchesDateRange =
-        appointmentDate.getMonth() === today.getMonth() &&
-        appointmentDate.getFullYear() === today.getFullYear();
+        appointmentDate.getUTCMonth() === today.getUTCMonth() &&
+        appointmentDate.getUTCFullYear() === today.getUTCFullYear();
     }
 
     return searchMatch && doctorMatch && matchesStatus && matchesDateRange;
@@ -1083,7 +1454,8 @@ export default function Appointments() {
   // Comprehensive debug logging
   console.log("=== APPOINTMENT FILTERING DEBUG ===", {
     totalAppointments: appointments.length,
-    visibleAppointments: sortedAppointments.length,
+    visibleAppointmentsCount: visibleAppointments.length,
+    sortedAppointmentsCount: sortedAppointments.length,
     filters: {
       statusFilter,
       dateRange,
@@ -1122,14 +1494,60 @@ export default function Appointments() {
     if (sampleFailed.length > 0) {
       console.log(
         "Sample appointments that FAILED filters:",
-        sampleFailed.map((apt) => ({
-          date: apt.appointmentDate,
-          doctor: apt.doctorName,
-          patient: getPatientName(apt),
-          status: apt.status,
-          doctorMatch: matchesDoctorFilter(apt.doctorName, doctorFilter),
-          hasDate: !!apt.appointmentDate,
-        }))
+        sampleFailed.map((apt) => {
+          // Check each filter condition
+          const searchMatch = !searchTerm || getPatientName(apt).toLowerCase().includes(searchTerm.toLowerCase());
+          const doctorMatch = matchesDoctorFilter(apt.doctorName, doctorFilter);
+          const statusMatch = statusFilter === "all" || 
+            (statusFilter === "cancelled" && (apt.status?.toLowerCase() === "cancelled" || apt.status?.toLowerCase() === "cancellation_pending")) ||
+            (apt.status?.toLowerCase() === statusFilter?.toLowerCase());
+          
+          // Check date range
+          let dateMatch = true;
+          if (dateRange !== "all" && apt.appointmentDate) {
+            try {
+              const datePart = apt.appointmentDate.split("T")[0];
+              const [year, month, day] = datePart.split("-");
+              const aptDate = new Date(parseInt(year, 10), parseInt(month, 10) - 1, parseInt(day, 10));
+              aptDate.setHours(0, 0, 0, 0);
+              const today = new Date();
+              today.setHours(0, 0, 0, 0);
+              
+              if (dateRange === "today") {
+                dateMatch = aptDate.getDate() === today.getDate() && 
+                           aptDate.getMonth() === today.getMonth() && 
+                           aptDate.getFullYear() === today.getFullYear();
+              } else if (dateRange === "week") {
+                const weekStart = new Date(today);
+                weekStart.setDate(today.getDate() - today.getDay());
+                weekStart.setHours(0, 0, 0, 0);
+                const weekEnd = new Date(weekStart);
+                weekEnd.setDate(weekStart.getDate() + 6);
+                weekEnd.setHours(23, 59, 59, 999);
+                dateMatch = aptDate >= weekStart && aptDate <= weekEnd;
+              } else if (dateRange === "month") {
+                dateMatch = aptDate.getMonth() === today.getMonth() && 
+                           aptDate.getFullYear() === today.getFullYear();
+              }
+            } catch (e) {
+              dateMatch = false;
+            }
+          }
+          
+          return {
+            date: apt.appointmentDate,
+            doctor: apt.doctorName,
+            patient: getPatientName(apt),
+            status: apt.status,
+            filterResults: {
+              searchMatch,
+              doctorMatch,
+              statusMatch,
+              dateMatch,
+              passesAll: searchMatch && doctorMatch && statusMatch && dateMatch
+            }
+          };
+        })
       );
     }
   }
@@ -1156,13 +1574,14 @@ export default function Appointments() {
   // Reset to first page when filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [statusFilter, dateRange, searchTerm]);
+  }, [statusFilter, dateRange, searchTerm, doctorFilter]);
 
   const updateAppointmentStatus = async (appointmentId, newStatus) => {
     try {
       await appointmentsAPI.updateStatus(appointmentId, { status: newStatus });
       toast.success(`Appointment ${newStatus} successfully`);
       fetchAppointments(); // Refresh the list
+      fetchDoctorTimeBlocks(); // Refresh time blocks
     } catch (error) {
       console.error("Error updating appointment:", error);
       toast.error(handleAPIError(error));
@@ -1263,6 +1682,7 @@ export default function Appointments() {
       });
       toast.success("Appointment cancelled successfully");
       fetchAppointments();
+      fetchDoctorTimeBlocks();
     } catch (error) {
       console.error("Error cancelling appointment:", error);
       toast.error(handleAPIError(error));
@@ -1278,6 +1698,11 @@ export default function Appointments() {
   const handleCompleteClick = (appointment) => {
     setActionAppointment(appointment);
     setShowCompleteModal(true);
+  };
+
+  const handleNoShowClick = (appointment) => {
+    setActionAppointment(appointment);
+    setShowNoShowModal(true);
   };
 
   const handleCancelClickModal = (appointment) => {
@@ -1303,6 +1728,14 @@ export default function Appointments() {
     }
   };
 
+  const markAsNoShow = async () => {
+    if (actionAppointment) {
+      await updateAppointmentStatus(actionAppointment._id, "no-show");
+      setShowNoShowModal(false);
+      setActionAppointment(null);
+    }
+  };
+
   const cancelAppointmentConfirmed = async () => {
     if (actionAppointment) {
       const reasonInput = document.getElementById("cancelReason");
@@ -1323,6 +1756,7 @@ export default function Appointments() {
         await appointmentsAPI.approveCancellation(appointment._id);
         toast.success("Cancellation request approved successfully");
         fetchAppointments();
+        fetchDoctorTimeBlocks();
       } catch (error) {
         console.error("Error approving cancellation:", error);
         toast.error(handleAPIError(error));
@@ -1340,6 +1774,7 @@ export default function Appointments() {
         await appointmentsAPI.rejectCancellation(appointment._id);
         toast.success("Cancellation request rejected successfully");
         fetchAppointments();
+        fetchDoctorTimeBlocks();
       } catch (error) {
         console.error("Error rejecting cancellation:", error);
         toast.error(handleAPIError(error));
@@ -1473,8 +1908,8 @@ export default function Appointments() {
               view === "month"
                 ? "MMMM yyyy"
                 : view === "week"
-                ? "MMM d, yyyy"
-                : "EEEE, MMM d, yyyy"
+                  ? "MMM d, yyyy"
+                  : "EEEE, MMM d, yyyy"
             )}
           </div>
         </div>
@@ -1539,10 +1974,10 @@ export default function Appointments() {
     setSelectedPatient(patient);
     setPatientSearch(
       patient.patientId +
-        " - " +
-        (patient.obGyneRecord?.patientName ||
-          patient.pediatricRecord?.nameOfChildren ||
-          "")
+      " - " +
+      (patient.obGyneRecord?.patientName ||
+        patient.pediatricRecord?.nameOfChildren ||
+        "")
     );
     setPatientResults([]);
     setNewAppointment((prev) => ({
@@ -1616,6 +2051,7 @@ export default function Appointments() {
         reasonForVisit: "",
       });
       fetchAppointments();
+      fetchDoctorTimeBlocks();
     } catch (error) {
       toast.error(handleAPIError(error) || "Failed to create appointment");
     } finally {
@@ -1635,13 +2071,39 @@ export default function Appointments() {
             Manage patient appointments and schedules
           </p>
         </div>
-        <Button
-          className="bg-warm-pink hover:bg-warm-pink-600 text-white font-medium px-4 py-2 shadow-md hover:shadow-lg transition-all duration-200"
-          onClick={() => setShowNewAppointmentModal(true)}
-        >
-          <Plus className="h-4 w-4 mr-2" />
-          New Appointment
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            className="border-soft-olive-300 text-charcoal hover:bg-soft-olive-50 font-medium px-4 py-2"
+            onClick={() => handlePrint("day")}
+          >
+            <Printer className="h-4 w-4 mr-2" />
+            Print Today
+          </Button>
+          <Button
+            variant="outline"
+            className="border-soft-olive-300 text-charcoal hover:bg-soft-olive-50 font-medium px-4 py-2"
+            onClick={() => handlePrint("week")}
+          >
+            <Printer className="h-4 w-4 mr-2" />
+            Print Week
+          </Button>
+          <Button
+            variant="outline"
+            className="border-soft-olive-300 text-charcoal hover:bg-soft-olive-50 font-medium px-4 py-2"
+            onClick={() => handlePrint("month")}
+          >
+            <Printer className="h-4 w-4 mr-2" />
+            Print Month
+          </Button>
+          <Button
+            className="bg-warm-pink hover:bg-warm-pink-600 text-white font-medium px-4 py-2 shadow-md hover:shadow-lg transition-all duration-200"
+            onClick={() => setShowNewAppointmentModal(true)}
+          >
+            <Plus className="h-4 w-4 mr-2" />
+            New Appointment
+          </Button>
+        </div>
       </div>
 
       {/* Filters and View Tabs */}
@@ -1664,37 +2126,55 @@ export default function Appointments() {
             {/* View Tabs */}
             <div className="flex items-center border border-soft-olive-300 rounded-md overflow-hidden bg-white">
               <button
-                className={`flex items-center gap-2 h-9 px-3 text-sm font-medium transition-colors ${
-                  viewMode === "table"
-                    ? "bg-warm-pink text-white"
-                    : "bg-white text-charcoal hover:bg-soft-olive-50"
-                }`}
+                className={`flex items-center gap-2 h-9 px-3 text-sm font-medium transition-colors ${viewMode === "table"
+                  ? "bg-warm-pink text-white"
+                  : "bg-white text-charcoal hover:bg-soft-olive-50"
+                  }`}
                 onClick={() => setViewMode("table")}
               >
                 <Archive className="h-4 w-4" />
                 Table
               </button>
               <button
-                className={`flex items-center gap-2 h-9 px-3 text-sm font-medium transition-colors ${
-                  viewMode === "calendar"
-                    ? "bg-warm-pink text-white"
-                    : "bg-white text-charcoal hover:bg-soft-olive-50"
-                }`}
+                className={`flex items-center gap-2 h-9 px-3 text-sm font-medium transition-colors ${viewMode === "calendar"
+                  ? "bg-warm-pink text-white"
+                  : "bg-white text-charcoal hover:bg-soft-olive-50"
+                  }`}
                 onClick={() => setViewMode("calendar")}
               >
                 <CalendarDays className="h-4 w-4" />
                 Calendar
+              </button>
+              <button
+                className={`flex items-center gap-2 h-9 px-3 text-sm font-medium transition-colors ${viewMode === "timeblocks"
+                  ? "bg-warm-pink text-white"
+                  : "bg-white text-charcoal hover:bg-soft-olive-50"
+                  }`}
+                onClick={() => setViewMode("timeblocks")}
+              >
+                <Clock className="h-4 w-4" />
+                Time Blocks
               </button>
             </div>
 
             {/* Simplified Date Range Filters */}
             <div className="flex gap-2">
               <Button
-                className={`flex items-center gap-2 h-9 px-3 text-sm font-medium border-2 rounded-md transition-colors duration-150 ${
-                  dateRange === "week"
-                    ? "bg-gray-200 text-black border-black"
-                    : "bg-white text-black border-black hover:bg-gray-100"
-                }`}
+                className={`flex items-center gap-2 h-9 px-3 text-sm font-medium border-2 rounded-md transition-colors duration-150 ${dateRange === "today"
+                  ? "bg-gray-200 text-black border-black"
+                  : "bg-white text-black border-black hover:bg-gray-100"
+                  }`}
+                variant="ghost"
+                onClick={() => setDateRange("today")}
+              >
+                <CalendarIcon className="h-4 w-4" />
+                Today
+              </Button>
+              <Button
+                className={`flex items-center gap-2 h-9 px-3 text-sm font-medium border-2 rounded-md transition-colors duration-150 ${dateRange === "week"
+                  ? "bg-gray-200 text-black border-black"
+                  : "bg-white text-black border-black hover:bg-gray-100"
+                  }`}
                 variant="ghost"
                 onClick={() => setDateRange("week")}
               >
@@ -1702,11 +2182,10 @@ export default function Appointments() {
                 This Week
               </Button>
               <Button
-                className={`flex items-center gap-2 h-9 px-3 text-sm font-medium border-2 rounded-md transition-colors duration-150 ${
-                  dateRange === "month"
-                    ? "bg-gray-200 text-black border-black"
-                    : "bg-white text-black border-black hover:bg-gray-100"
-                }`}
+                className={`flex items-center gap-2 h-9 px-3 text-sm font-medium border-2 rounded-md transition-colors duration-150 ${dateRange === "month"
+                  ? "bg-gray-200 text-black border-black"
+                  : "bg-white text-black border-black hover:bg-gray-100"
+                  }`}
                 variant="ghost"
                 onClick={() => setDateRange("month")}
               >
@@ -1714,11 +2193,10 @@ export default function Appointments() {
                 This Month
               </Button>
               <Button
-                className={`flex items-center gap-2 h-9 px-3 text-sm font-medium border-2 rounded-md transition-colors duration-150 ${
-                  dateRange === "all"
-                    ? "bg-gray-200 text-black border-black"
-                    : "bg-white text-black border-black hover:bg-gray-100"
-                }`}
+                className={`flex items-center gap-2 h-9 px-3 text-sm font-medium border-2 rounded-md transition-colors duration-150 ${dateRange === "all"
+                  ? "bg-gray-200 text-black border-black"
+                  : "bg-white text-black border-black hover:bg-gray-100"
+                  }`}
                 variant="ghost"
                 onClick={() => setDateRange("all")}
               >
@@ -1774,13 +2252,13 @@ export default function Appointments() {
                 {dynamicDoctorNames[0]
                   ? dynamicDoctorNames[0].startsWith("Dr. ")
                     ? "Dr. " +
-                      dynamicDoctorNames[0]
-                        .replace("Dr. ", "")
-                        .split(" ")
-                        .slice(0, 2)
-                        .join(" ")
+                    dynamicDoctorNames[0]
+                      .replace("Dr. ", "")
+                      .split(" ")
+                      .slice(0, 2)
+                      .join(" ")
                     : "Dr. " +
-                      dynamicDoctorNames[0].split(" ").slice(0, 2).join(" ")
+                    dynamicDoctorNames[0].split(" ").slice(0, 2).join(" ")
                   : "Dr. Maria"}
               </Button>
               <Button
@@ -1816,13 +2294,13 @@ export default function Appointments() {
                 {dynamicDoctorNames[1]
                   ? dynamicDoctorNames[1].startsWith("Dr. ")
                     ? "Dr. " +
-                      dynamicDoctorNames[1]
-                        .replace("Dr. ", "")
-                        .split(" ")
-                        .slice(0, 2)
-                        .join(" ")
+                    dynamicDoctorNames[1]
+                      .replace("Dr. ", "")
+                      .split(" ")
+                      .slice(0, 2)
+                      .join(" ")
                     : "Dr. " +
-                      dynamicDoctorNames[1].split(" ").slice(0, 2).join(" ")
+                    dynamicDoctorNames[1].split(" ").slice(0, 2).join(" ")
                   : "Dr. Shara"}
               </Button>
             </div>
@@ -1842,16 +2320,291 @@ export default function Appointments() {
           ].map((tab) => (
             <button
               key={tab.value}
-              className={`px-4 py-2 rounded-md font-medium transition-colors duration-150 text-sm focus:outline-none ${
-                statusFilter === tab.value
-                  ? "bg-warm-pink text-white shadow font-bold"
-                  : "bg-transparent text-black hover:bg-gray-100"
-              }`}
+              className={`px-4 py-2 rounded-md font-medium transition-colors duration-150 text-sm focus:outline-none ${statusFilter === tab.value
+                ? "bg-warm-pink text-white shadow font-bold"
+                : "bg-transparent text-black hover:bg-gray-100"
+                }`}
               onClick={() => setStatusFilter(tab.value)}
             >
               {tab.label}
             </button>
           ))}
+        </div>
+      )}
+
+      {/* Time Blocks View */}
+      {viewMode === "timeblocks" && (
+        <div className="mb-6">
+          <Card className="bg-white border-soft-olive-200">
+            <CardHeader className="bg-gradient-to-r from-warm-pink/10 to-soft-olive-100 border-b border-soft-olive-200">
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="flex items-center gap-2 text-charcoal">
+                    <Clock className="h-5 w-5 text-warm-pink" />
+                    Doctor Time Blocks
+                  </CardTitle>
+                  <CardDescription className="text-muted-gold text-sm mt-1">
+                    {(dateRange === "today") &&
+                      new Date().toLocaleDateString("en-US", {
+                        weekday: "long",
+                        year: "numeric",
+                        month: "long",
+                        day: "numeric",
+                      })}
+                    {dateRange === "week" && (() => {
+                      const today = new Date();
+                      const startOfWeek = new Date(today);
+                      const dayOfWeek = today.getDay();
+                      startOfWeek.setDate(today.getDate() - dayOfWeek);
+                      const endOfWeek = new Date(startOfWeek);
+                      endOfWeek.setDate(startOfWeek.getDate() + 6);
+                      return `${startOfWeek.toLocaleDateString("en-US", {
+                        month: "short",
+                        day: "numeric",
+                      })} - ${endOfWeek.toLocaleDateString("en-US", {
+                        month: "short",
+                        day: "numeric",
+                        year: "numeric",
+                      })}`;
+                    })()}
+                    {(dateRange === "month" || dateRange === "all") &&
+                      new Date().toLocaleDateString("en-US", {
+                        month: "long",
+                        year: "numeric",
+                      })}
+                  </CardDescription>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="p-4">
+              {loadingTimeBlocks ? (
+                <div className="flex justify-center py-8">
+                  <LoadingSpinner size="md" />
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {getDoctorNames().map((doctorName) => {
+                    const timeBlockData = doctorTimeBlocks[doctorName];
+                    if (!timeBlockData) {
+                      return (
+                        <Card key={doctorName} className="border-gray-200">
+                          <CardHeader className="pb-3">
+                            <CardTitle className="text-lg text-charcoal">
+                              {doctorName}
+                            </CardTitle>
+                          </CardHeader>
+                          <CardContent>
+                            <p className="text-sm text-gray-500">
+                              No schedule for {dateRange === "today" ? "today" : dateRange === "week" ? "this week" : "this month"}
+                            </p>
+                          </CardContent>
+                        </Card>
+                      );
+                    }
+
+                    const {
+                      available = false,
+                      reason = "",
+                      totalSlots = 0,
+                      availableSlots = 0,
+                      bookedSlots = 0,
+                      slots = { all: [], available: [], booked: [] },
+                    } = timeBlockData;
+
+                    if (!available) {
+                      return (
+                        <Card key={doctorName} className="border-gray-200">
+                          <CardHeader className="pb-3">
+                            <CardTitle className="text-lg text-charcoal">
+                              {doctorName}
+                            </CardTitle>
+                          </CardHeader>
+                          <CardContent>
+                            <p className="text-sm text-gray-500">{reason}</p>
+                          </CardContent>
+                        </Card>
+                      );
+                    }
+
+                    return (
+                      <Card key={doctorName} className="border-gray-200">
+                        <CardHeader className="pb-3">
+                          <CardTitle className="text-lg text-charcoal">
+                            {doctorName}
+                          </CardTitle>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                          {/* Summary Stats */}
+                          <div className="grid grid-cols-3 gap-3">
+                            <div className="bg-blue-50 rounded-lg p-3 text-center">
+                              <div className="text-2xl font-bold text-blue-600">
+                                {totalSlots}
+                              </div>
+                              <div className="text-xs text-blue-700 mt-1">
+                                Total Slots
+                              </div>
+                            </div>
+                            <div className="bg-green-50 rounded-lg p-3 text-center">
+                              <div className="text-2xl font-bold text-green-600">
+                                {availableSlots}
+                              </div>
+                              <div className="text-xs text-green-700 mt-1">
+                                Available
+                              </div>
+                            </div>
+                            <div className="bg-red-50 rounded-lg p-3 text-center">
+                              <div className="text-2xl font-bold text-red-600">
+                                {bookedSlots}
+                              </div>
+                              <div className="text-xs text-red-700 mt-1">
+                                Booked
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Time Blocks Display */}
+                          {dateRange === "today" && (
+                            <div className="space-y-3">
+                              <div>
+                                <h4 className="text-sm font-semibold text-gray-700 mb-2">
+                                  Time Blocks
+                                </h4>
+                                <div className="grid grid-cols-4 gap-2 max-h-48 overflow-y-auto">
+                                  {slots.all && slots.all.length > 0 ? (
+                                    slots.all.map((slot) => {
+                                      const isBooked =
+                                        slots.booked &&
+                                        slots.booked.includes(slot);
+                                      const isAvailable =
+                                        slots.available &&
+                                        slots.available.includes(slot);
+                                      return (
+                                        <div
+                                          key={slot}
+                                          className={`text-xs p-2 rounded text-center font-medium ${isBooked
+                                            ? "bg-red-100 text-red-700 border border-red-300"
+                                            : isAvailable
+                                              ? "bg-green-100 text-green-700 border border-green-300"
+                                              : "bg-gray-100 text-gray-600 border border-gray-300"
+                                            }`}
+                                        >
+                                          {slot}
+                                        </div>
+                                      );
+                                    })
+                                  ) : (
+                                    <p className="text-sm text-gray-500 col-span-4">
+                                      No time slots available
+                                    </p>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Daily Breakdown for Week/Month */}
+                          {(dateRange === "week" || dateRange === "month" || dateRange === "all") && timeBlockData.dailySummary && (
+                            <div className="space-y-3">
+                              <div>
+                                <h4 className="text-sm font-semibold text-gray-700 mb-3">
+                                  Daily Breakdown
+                                </h4>
+                                <div className="space-y-4 max-h-96 overflow-y-auto">
+                                  {Object.entries(timeBlockData.dailySummary)
+                                    .sort(([dateA], [dateB]) => dateA.localeCompare(dateB))
+                                    .map(([date, dayData]) => {
+                                      const dateObj = new Date(date);
+                                      const dayName = dateObj.toLocaleDateString("en-US", { weekday: "short" });
+                                      const formattedDate = dateObj.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+                                      const isWorkingDay = dayData.workingDay;
+                                      const daySlots = timeBlockData.dailySlots?.[date];
+
+                                      return (
+                                        <div
+                                          key={date}
+                                          className={`border rounded-lg p-4 ${isWorkingDay
+                                            ? "bg-gray-50 border-gray-200"
+                                            : "bg-gray-100 border-gray-300 opacity-60"
+                                            }`}
+                                        >
+                                          <div className="flex items-center justify-between mb-3">
+                                            <div className="flex items-center gap-2">
+                                              <span className="font-semibold text-sm text-gray-700">
+                                                {dayName}, {formattedDate}
+                                              </span>
+                                              {!isWorkingDay && (
+                                                <span className="text-xs text-gray-500">
+                                                  (Not working)
+                                                </span>
+                                              )}
+                                            </div>
+                                            {isWorkingDay && (
+                                              <div className="flex items-center gap-4 text-xs">
+                                                <span className="text-blue-600 font-medium">
+                                                  Total: {dayData.totalSlots || 0}
+                                                </span>
+                                                <span className="text-green-600 font-medium">
+                                                  Available: {dayData.availableSlots || 0}
+                                                </span>
+                                                <span className="text-red-600 font-medium">
+                                                  Booked: {dayData.bookedSlots || 0}
+                                                </span>
+                                                <span className="text-gray-600">
+                                                  {dayData.availability || "0%"}
+                                                </span>
+                                              </div>
+                                            )}
+                                          </div>
+
+                                          {/* Time Blocks for this day */}
+                                          {isWorkingDay && daySlots && daySlots.slots && (
+                                            <div className="mt-3 pt-3 border-t border-gray-200">
+                                              <h5 className="text-xs font-semibold text-gray-600 mb-2">
+                                                Time Blocks:
+                                              </h5>
+                                              <div className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-6 gap-2">
+                                                {daySlots.slots.all && daySlots.slots.all.length > 0 ? (
+                                                  daySlots.slots.all.map((slot) => {
+                                                    const isBooked = daySlots.slots.booked && daySlots.slots.booked.includes(slot);
+                                                    const isAvailable = daySlots.slots.available && daySlots.slots.available.includes(slot);
+                                                    return (
+                                                      <div
+                                                        key={slot}
+                                                        className={`text-xs p-1.5 rounded text-center font-medium ${isBooked
+                                                          ? "bg-red-100 text-red-700 border border-red-300"
+                                                          : isAvailable
+                                                            ? "bg-green-100 text-green-700 border border-green-300"
+                                                            : "bg-gray-100 text-gray-600 border border-gray-300"
+                                                          }`}
+                                                        title={isBooked ? "Booked" : isAvailable ? "Available" : "N/A"}
+                                                      >
+                                                        {slot}
+                                                      </div>
+                                                    );
+                                                  })
+                                                ) : (
+                                                  <p className="text-xs text-gray-500 col-span-full">
+                                                    No time slots available
+                                                  </p>
+                                                )}
+                                              </div>
+                                            </div>
+                                          )}
+                                        </div>
+                                      );
+                                    })}
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </div>
       )}
 
@@ -1993,13 +2746,13 @@ export default function Appointments() {
                           >
                             {doctor.startsWith("Dr. ")
                               ? "Dr. " +
-                                doctor
-                                  .replace("Dr. ", "")
-                                  .split(" ")
-                                  .slice(0, 2)
-                                  .join(" ")
+                              doctor
+                                .replace("Dr. ", "")
+                                .split(" ")
+                                .slice(0, 2)
+                                .join(" ")
                               : "Dr. " +
-                                doctor.split(" ").slice(0, 2).join(" ")}
+                              doctor.split(" ").slice(0, 2).join(" ")}
                           </label>
                         </div>
                       ))}
@@ -2087,7 +2840,7 @@ export default function Appointments() {
                       style={{ height: "100%" }}
                       view="month"
                       views={["month"]}
-                      onView={() => {}} // disables view switching
+                      onView={() => { }} // disables view switching
                       date={currentDate}
                       onNavigate={setCurrentDate}
                       toolbar={false}
@@ -2203,7 +2956,7 @@ export default function Appointments() {
 
           {/* Table View */}
           {viewMode === "table" && (
-            <Card className="bg-white border-soft-olive-200">
+            <Card className="bg-white border-soft-olive-200" key={`table-${statusFilter}-${dateRange}-${doctorFilter.join(',')}-${searchTerm}`}>
               <CardContent className="p-0 overflow-auto">
                 <div className="overflow-x-auto">
                   <table
@@ -2351,8 +3104,8 @@ export default function Appointments() {
                             {a.endTime
                               ? formatTime(a.endTime)
                               : a.appointmentTime
-                              ? formatTime(add30Minutes(a.appointmentTime))
-                              : "—"}
+                                ? formatTime(add30Minutes(a.appointmentTime))
+                                : "—"}
                           </td>
                           <td className="px-1 py-2 border-r border-gray-100">
                             {a.estimatedWaitTime
@@ -2419,39 +3172,54 @@ export default function Appointments() {
                                 </Button>
                               )}
                               {a.status === "confirmed" && (
-                                <Button
-                                  size="sm"
-                                  className="h-7 px-2 bg-green-600 hover:bg-green-700 text-white"
-                                  onClick={() => handleCompleteClick(a)}
-                                  disabled={!canCompleteAppointment(a)}
-                                  title={
-                                    !canCompleteAppointment(a)
-                                      ? "Cannot complete appointment until the appointment date/time has passed"
-                                      : ""
-                                  }
-                                >
-                                  Complete
-                                </Button>
+                                <>
+                                  <Button
+                                    size="sm"
+                                    className="h-7 px-2 bg-green-600 hover:bg-green-700 text-white"
+                                    onClick={() => handleCompleteClick(a)}
+                                    disabled={!canCompleteAppointment(a)}
+                                    title={
+                                      !canCompleteAppointment(a)
+                                        ? "Cannot complete appointment until the appointment date/time has passed"
+                                        : ""
+                                    }
+                                  >
+                                    Complete
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    className="h-7 px-2 bg-purple-600 hover:bg-purple-700 text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                                    onClick={() => handleNoShowClick(a)}
+                                    disabled={!canCompleteAppointment(a)}
+                                    title={
+                                      !canCompleteAppointment(a)
+                                        ? "Cannot mark as No-Show until the appointment date/time has passed"
+                                        : "Mark as No-Show"
+                                    }
+                                  >
+                                    No Show
+                                  </Button>
+                                </>
                               )}
                               {(a.status === "scheduled" ||
                                 a.status === "confirmed") && (
-                                <>
-                                  <button
-                                    type="button"
-                                    className="h-7 px-2 rounded border bg-white hover:bg-gray-100 text-sm"
-                                    onClick={() => handleReschedule(a)}
-                                  >
-                                    Reschedule
-                                  </button>
-                                  <button
-                                    type="button"
-                                    className="h-7 px-2 rounded bg-red-600 hover:bg-red-700 text-white text-sm"
-                                    onClick={() => handleCancelClickModal(a)}
-                                  >
-                                    Cancel
-                                  </button>
-                                </>
-                              )}
+                                  <>
+                                    <button
+                                      type="button"
+                                      className="h-7 px-2 rounded border bg-white hover:bg-gray-100 text-sm"
+                                      onClick={() => handleReschedule(a)}
+                                    >
+                                      Reschedule
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className="h-7 px-2 rounded bg-red-600 hover:bg-red-700 text-white text-sm"
+                                      onClick={() => handleCancelClickModal(a)}
+                                    >
+                                      Cancel
+                                    </button>
+                                  </>
+                                )}
                             </div>
                           </td>
                         </tr>
@@ -2476,11 +3244,10 @@ export default function Appointments() {
                       <CardHeader className="bg-gradient-to-r from-warm-pink/10 to-soft-olive-100 border-b border-soft-olive-200">
                         <CardTitle className="flex items-center gap-2 text-charcoal">
                           <div
-                            className={`h-3 w-3 rounded-full ${
-                              doctorName.includes("Maria")
-                                ? "bg-warm-pink"
-                                : "bg-yellow-400"
-                            }`}
+                            className={`h-3 w-3 rounded-full ${doctorName.includes("Maria")
+                              ? "bg-warm-pink"
+                              : "bg-yellow-400"
+                              }`}
                           ></div>
                           <span className="font-semibold">{doctorName}</span>
                         </CardTitle>
@@ -2660,48 +3427,68 @@ export default function Appointments() {
                                     </Button>
                                   )}
                                   {appointment.status === "confirmed" && (
-                                    <Button
-                                      size="sm"
-                                      className="bg-green-600 hover:bg-green-700 text-white font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
-                                      onClick={() =>
-                                        handleCompleteClick(appointment)
-                                      }
-                                      disabled={
-                                        !canCompleteAppointment(appointment)
-                                      }
-                                      title={
-                                        !canCompleteAppointment(appointment)
-                                          ? "Cannot complete appointment until the appointment date/time has passed"
-                                          : ""
-                                      }
-                                    >
-                                      <CheckCircle className="h-3 w-3 mr-1" />
-                                      Complete
-                                    </Button>
+                                    <>
+                                      <Button
+                                        size="sm"
+                                        className="bg-green-600 hover:bg-green-700 text-white font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+                                        onClick={() =>
+                                          handleCompleteClick(appointment)
+                                        }
+                                        disabled={
+                                          !canCompleteAppointment(appointment)
+                                        }
+                                        title={
+                                          !canCompleteAppointment(appointment)
+                                            ? "Cannot complete appointment until the appointment date/time has passed"
+                                            : ""
+                                        }
+                                      >
+                                        <CheckCircle className="h-3 w-3 mr-1" />
+                                        Complete
+                                      </Button>
+                                      <Button
+                                        size="sm"
+                                        className="bg-purple-600 hover:bg-purple-700 text-white font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+                                        onClick={() =>
+                                          handleNoShowClick(appointment)
+                                        }
+                                        disabled={
+                                          !canCompleteAppointment(appointment)
+                                        }
+                                        title={
+                                          !canCompleteAppointment(appointment)
+                                            ? "Cannot mark as No-Show until the appointment date/time has passed"
+                                            : "Mark as No-Show"
+                                        }
+                                      >
+                                        <AlertTriangle className="h-3 w-3 mr-1" />
+                                        No Show
+                                      </Button>
+                                    </>
                                   )}
                                   {(appointment.status === "scheduled" ||
                                     appointment.status === "confirmed") && (
-                                    <>
-                                      <button
-                                        type="button"
-                                        className="px-3 py-1 rounded border bg-white hover:bg-gray-100 text-sm"
-                                        onClick={() =>
-                                          handleReschedule(appointment)
-                                        }
-                                      >
-                                        Reschedule
-                                      </button>
-                                      <button
-                                        type="button"
-                                        className="px-3 py-1 rounded bg-red-600 hover:bg-red-700 text-white text-sm"
-                                        onClick={() =>
-                                          handleCancelClickModal(appointment)
-                                        }
-                                      >
-                                        Cancel
-                                      </button>
-                                    </>
-                                  )}
+                                      <>
+                                        <button
+                                          type="button"
+                                          className="px-3 py-1 rounded border bg-white hover:bg-gray-100 text-sm"
+                                          onClick={() =>
+                                            handleReschedule(appointment)
+                                          }
+                                        >
+                                          Reschedule
+                                        </button>
+                                        <button
+                                          type="button"
+                                          className="px-3 py-1 rounded bg-red-600 hover:bg-red-700 text-white text-sm"
+                                          onClick={() =>
+                                            handleCancelClickModal(appointment)
+                                          }
+                                        >
+                                          Cancel
+                                        </button>
+                                      </>
+                                    )}
                                 </div>
                               </div>
                             </div>
@@ -2725,8 +3512,8 @@ export default function Appointments() {
                     {searchTerm
                       ? `No appointments found matching "${searchTerm}"`
                       : doctorFilter.length === 0
-                      ? "Select a doctor to view appointments"
-                      : "No appointments found for the selected criteria"}
+                        ? "Select a doctor to view appointments"
+                        : "No appointments found for the selected criteria"}
                   </p>
                   <Button
                     className="bg-warm-pink hover:bg-warm-pink-600 text-white font-medium px-4 py-2"
@@ -2917,14 +3704,13 @@ export default function Appointments() {
                   <span>Appointment Details</span>
                 </DialogTitle>
                 <div
-                  className={`text-sm font-semibold capitalize px-2.5 py-1 rounded-full text-white ${
-                    {
-                      scheduled: "bg-blue-500",
-                      confirmed: "bg-green-500",
-                      completed: "bg-gray-500",
-                      cancelled: "bg-red-500",
-                    }[selectedAppointment.status] || "bg-yellow-500"
-                  }`}
+                  className={`text-sm font-semibold capitalize px-2.5 py-1 rounded-full text-white ${{
+                    scheduled: "bg-blue-500",
+                    confirmed: "bg-green-500",
+                    completed: "bg-gray-500",
+                    cancelled: "bg-red-500",
+                  }[selectedAppointment.status] || "bg-yellow-500"
+                    }`}
                 >
                   {selectedAppointment.status}
                 </div>
@@ -2968,14 +3754,14 @@ export default function Appointments() {
                 )}{" "}
                 at {selectedAppointment.appointmentTime}
                 {selectedAppointment.endTime ||
-                selectedAppointment.appointmentTime ? (
+                  selectedAppointment.appointmentTime ? (
                   <span className="text-gray-500">
                     {" - "}
                     {selectedAppointment.endTime
                       ? formatTime(selectedAppointment.endTime)
                       : formatTime(
-                          add30Minutes(selectedAppointment.appointmentTime)
-                        )}
+                        add30Minutes(selectedAppointment.appointmentTime)
+                      )}
                   </span>
                 ) : null}
               </div>
@@ -3001,15 +3787,15 @@ export default function Appointments() {
               </Button>
               {(selectedAppointment.status === "scheduled" ||
                 selectedAppointment.status === "confirmed") && (
-                <div className="flex space-x-2">
-                  <Button variant="destructive" onClick={handleCancelClick}>
-                    Cancel Appointment
-                  </Button>
-                  <Button variant="clinic" onClick={handleRescheduleClick}>
-                    Reschedule
-                  </Button>
-                </div>
-              )}
+                  <div className="flex space-x-2">
+                    <Button variant="destructive" onClick={handleCancelClick}>
+                      Cancel Appointment
+                    </Button>
+                    <Button variant="clinic" onClick={handleRescheduleClick}>
+                      Reschedule
+                    </Button>
+                  </div>
+                )}
             </DialogFooter>
           </DialogContent>
         </Dialog>
@@ -3155,14 +3941,13 @@ export default function Appointments() {
                             }}
                             className={`
                               h-8 w-full rounded-md text-xs font-semibold transition-all duration-200
-                              ${
-                                !isAvailable || isPast
-                                  ? "bg-gray-100 text-gray-400 cursor-not-allowed opacity-50"
-                                  : isSelected
+                              ${!isAvailable || isPast
+                                ? "bg-gray-100 text-gray-400 cursor-not-allowed opacity-50"
+                                : isSelected
                                   ? "bg-warm-pink text-white shadow-lg scale-110 ring-2 ring-warm-pink ring-offset-1"
                                   : isToday
-                                  ? "bg-blue-100 text-blue-700 border-2 border-blue-300 hover:bg-blue-200"
-                                  : "bg-white text-gray-700 border border-gray-300 hover:bg-warm-pink hover:text-white hover:border-warm-pink hover:shadow-md"
+                                    ? "bg-blue-100 text-blue-700 border-2 border-blue-300 hover:bg-blue-200"
+                                    : "bg-white text-gray-700 border border-gray-300 hover:bg-warm-pink hover:text-white hover:border-warm-pink hover:shadow-md"
                               }
                               focus:outline-none focus:ring-2 focus:ring-warm-pink focus:ring-offset-1
                               disabled:cursor-not-allowed
@@ -3171,8 +3956,8 @@ export default function Appointments() {
                               !isAvailable
                                 ? "Doctor not available on this day"
                                 : isPast
-                                ? "Cannot select past dates"
-                                : `Select ${date.toLocaleDateString("en-US", {
+                                  ? "Cannot select past dates"
+                                  : `Select ${date.toLocaleDateString("en-US", {
                                     weekday: "long",
                                     month: "long",
                                     day: "numeric",
@@ -3320,11 +4105,12 @@ export default function Appointments() {
                       toast.success("Appointment rescheduled successfully");
                       setShowRescheduleModal(false);
                       fetchAppointments();
+                      fetchDoctorTimeBlocks();
                     })
                     .catch((error) => {
                       toast.error(
                         handleAPIError(error) ||
-                          "Failed to reschedule appointment"
+                        "Failed to reschedule appointment"
                       );
                       console.error(error);
                     });
@@ -3821,12 +4607,12 @@ export default function Appointments() {
                             <p
                               className={
                                 appointment.doctorName ===
-                                "Dr. Maria Sarah L. Manaloto"
+                                  "Dr. Maria Sarah L. Manaloto"
                                   ? "text-warm-pink font-semibold"
                                   : appointment.doctorName ===
                                     "Dr. Shara Laine S. Vino"
-                                  ? "text-blue-600 font-semibold"
-                                  : "text-gray-600"
+                                    ? "text-blue-600 font-semibold"
+                                    : "text-gray-600"
                               }
                             >
                               {appointment.doctorName}
@@ -3908,6 +4694,58 @@ export default function Appointments() {
               Close
             </Button>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* No Show Appointment Modal */}
+      <Dialog open={showNoShowModal} onOpenChange={setShowNoShowModal}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-purple-600" />
+              Mark as No-Show
+            </DialogTitle>
+          </DialogHeader>
+          <div className="py-4">
+            <p className="text-charcoal mb-4">
+              Are you sure you want to mark this appointment as a No-Show?
+            </p>
+            <p className="text-sm text-gray-500 mb-4">
+              This will increment the patient's no-show count. After 3 no-shows, the patient's account will be locked from booking.
+            </p>
+            {actionAppointment && (
+              <div className="bg-purple-50 p-3 rounded-lg border border-purple-200">
+                <div className="text-sm">
+                  <div className="font-semibold text-charcoal">
+                    {getPatientName(actionAppointment)}
+                  </div>
+                  <div className="text-muted-gold">
+                    {formatDate(actionAppointment.appointmentDate)} at{" "}
+                    {formatTime(actionAppointment.appointmentTime)}
+                  </div>
+                  <div className="text-muted-gold">
+                    {actionAppointment.doctorName} •{" "}
+                    {actionAppointment.serviceType.replace(/_/g, " ")}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setShowNoShowModal(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              className="bg-purple-600 hover:bg-purple-700 text-white"
+              onClick={markAsNoShow}
+            >
+              <AlertTriangle className="h-4 w-4 mr-2" />
+              Mark as No-Show
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

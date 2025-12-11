@@ -1,4 +1,4 @@
-import { Card, CardContent, CardHeader, CardTitle, Button, LoadingSpinner, appointmentsAPI, extractData } from '../../shared';
+import { Card, CardContent, CardHeader, CardTitle, Button, LoadingSpinner, appointmentsAPI, settingsAPI, extractData } from '../../shared';
 import React, { useState, useEffect, useMemo } from 'react';
 import { Printer, Filter, Users, Globe, UserPlus, TrendingUp } from 'lucide-react';
 
@@ -10,7 +10,92 @@ const allDoctorNames = [
 const Reports = () => {
   const [loading, setLoading] = useState(false);
   const [allAppointments, setAllAppointments] = useState([]);
-  const [selectedDoctors, setSelectedDoctors] = useState(allDoctorNames); // Default to both doctors
+  const [selectedDoctors, setSelectedDoctors] = useState([]); // Empty = show all doctors
+  const [clinicSettings, setClinicSettings] = useState(null);
+
+  // Get dynamic doctor names from settings
+  const getDoctorNames = () => {
+    if (clinicSettings) {
+      return [
+        clinicSettings.obgyneDoctor?.name || allDoctorNames[0],
+        clinicSettings.pediatrician?.name || allDoctorNames[1],
+      ];
+    }
+    return allDoctorNames;
+  };
+
+  const dynamicDoctorNames = getDoctorNames();
+
+  // Doctor name mapping helpers for flexible filtering
+  // Maps appointment doctor names to settings doctor names and vice versa
+  const mapDoctorNameToSettings = (appointmentDoctorName) => {
+    if (!appointmentDoctorName || !clinicSettings) {
+      return appointmentDoctorName;
+    }
+
+    // Check if appointment doctor matches OB-GYNE doctor from settings
+    const obgyneSettingsName = clinicSettings.obgyneDoctor?.name;
+    if (obgyneSettingsName) {
+      // Check if appointment doctor name contains OB-GYNE doctor name or vice versa
+      if (
+        appointmentDoctorName.includes(obgyneSettingsName) ||
+        obgyneSettingsName.includes(appointmentDoctorName) ||
+        appointmentDoctorName.toLowerCase().includes("maria") ||
+        appointmentDoctorName.toLowerCase().includes("ob") ||
+        appointmentDoctorName.toLowerCase().includes("ob-gyne")
+      ) {
+        return obgyneSettingsName;
+      }
+    }
+
+    // Check if appointment doctor matches Pediatric doctor from settings
+    const pediatricSettingsName = clinicSettings.pediatrician?.name;
+    if (pediatricSettingsName) {
+      // Check if appointment doctor name contains Pediatric doctor name or vice versa
+      if (
+        appointmentDoctorName.includes(pediatricSettingsName) ||
+        pediatricSettingsName.includes(appointmentDoctorName) ||
+        appointmentDoctorName.toLowerCase().includes("shara") ||
+        appointmentDoctorName.toLowerCase().includes("pediatric") ||
+        appointmentDoctorName.toLowerCase().includes("pedia")
+      ) {
+        return pediatricSettingsName;
+      }
+    }
+
+    // Fallback: return original name if no match found
+    return appointmentDoctorName;
+  };
+
+  // Check if appointment doctor matches filter
+  const matchesDoctorFilter = (appointmentDoctorName, filter) => {
+    // If filter is empty array, show all (return true)
+    if (!filter || filter.length === 0) {
+      return true;
+    }
+
+    // If appointment has no doctor name, exclude it
+    if (!appointmentDoctorName) {
+      return false;
+    }
+
+    // Map appointment doctor name to settings doctor name
+    const mappedName = mapDoctorNameToSettings(appointmentDoctorName);
+
+    // Check if mapped name or original name is in filter
+    return (
+      filter.includes(appointmentDoctorName) ||
+      filter.includes(mappedName) ||
+      filter.some((filterName) => {
+        const filterMapped = mapDoctorNameToSettings(filterName);
+        return (
+          filterMapped === mappedName ||
+          appointmentDoctorName.includes(filterName) ||
+          filterName.includes(appointmentDoctorName)
+        );
+      })
+    );
+  };
 
   const fetchAllAppointments = async () => {
     setLoading(true);
@@ -22,8 +107,11 @@ const Reports = () => {
       console.log('Fetched appointments for reports:', appointments.length);
       setAllAppointments(appointments);
     } catch (error) {
-      console.error('Error fetching appointments:', error);
-      setAllAppointments([]);
+      // Suppress CanceledError (expected from request throttling)
+      if (error?.code !== 'ERR_CANCELED' && error?.name !== 'CanceledError' && !error?.silent) {
+        console.error('Error fetching appointments:', error);
+        setAllAppointments([]);
+      }
     } finally {
       setLoading(false);
     }
@@ -31,21 +119,51 @@ const Reports = () => {
 
   useEffect(() => {
     fetchAllAppointments();
+    fetchClinicSettings();
   }, []);
 
-  // Calculate analytics
+  const fetchClinicSettings = async () => {
+    try {
+      const response = await settingsAPI.getClinicSettings();
+      const data = extractData(response);
+      setClinicSettings(data);
+    } catch (error) {
+      // Suppress CanceledError (expected from request throttling)
+      if (error?.code !== 'ERR_CANCELED' && error?.name !== 'CanceledError' && !error?.silent) {
+        console.error("Error fetching clinic settings:", error);
+      }
+      // Fallback to localStorage if API fails
+      const savedSettings = localStorage.getItem("clinic_settings");
+      if (savedSettings) {
+        try {
+          const settings = JSON.parse(savedSettings);
+          setClinicSettings(settings);
+        } catch (e) {
+          console.error("Error parsing localStorage settings:", e);
+        }
+      }
+    }
+  };
+
+  // Calculate analytics - filter by selected doctors
   const analytics = useMemo(() => {
-    const total = allAppointments.length;
+    // Get filtered appointments based on selected doctors
+    const doctorsToFilter = selectedDoctors.length === 0 ? getDoctorNames() : selectedDoctors;
+    const filteredAppointments = allAppointments.filter(a => 
+      matchesDoctorFilter(a.doctorName, doctorsToFilter)
+    );
+    
+    const total = filteredAppointments.length;
     
     // Walk-in appointments: booked by staff (has bookedBy or bookingSource is "staff")
-    const walkIns = allAppointments.filter(a => 
+    const walkIns = filteredAppointments.filter(a => 
       a.bookingSource === "staff" || 
       (a.bookedBy && !a.patientUserId) ||
       (!a.bookingSource && a.bookedBy)
     );
     
     // Online appointments: booked through patient portal (has patientUserId or bookingSource is "patient_portal")
-    const online = allAppointments.filter(a => 
+    const online = filteredAppointments.filter(a => 
       a.bookingSource === "patient_portal" || 
       (a.patientUserId && !a.bookedBy) ||
       (a.patientUserId && a.bookingSource !== "staff")
@@ -62,7 +180,8 @@ const Reports = () => {
       walkInPercentage,
       onlinePercentage,
     };
-  }, [allAppointments]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allAppointments, selectedDoctors, clinicSettings]);
 
   const getPatientName = (appointment) => {
     if (appointment.patientName) return appointment.patientName;
@@ -87,18 +206,294 @@ const Reports = () => {
 
 
   const buildPrintHtml = (rangeLabel, groupedByDoctor) => {
+    const clinicName = clinicSettings?.clinicName || "VM Mother and Child Clinic";
+    const clinicAddress = clinicSettings?.address || "";
+    const clinicPhone = clinicSettings?.phone || "";
+    const clinicEmail = clinicSettings?.email || "";
+    
     const styles = `
       <style>
-        body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; padding: 16px; color: #111827; }
-        h1 { font-size: 18px; margin: 0 0 12px; }
-        h2 { font-size: 16px; margin: 16px 0 8px; }
-        table { width: 100%; border-collapse: collapse; margin-top: 8px; }
-        th, td { border: 1px solid #e5e7eb; padding: 6px 8px; font-size: 12px; }
-        th { background: #f9fafb; text-align: left; }
-        .muted { color: #6b7280; }
-        .summary { margin-top: 6px; font-size: 12px; }
-        .no-show { color: #7c3aed; font-weight: 600; }
+        @page {
+          size: A4;
+          margin: 50px 15mm 45px 15mm;
+        }
+        * {
+          box-sizing: border-box;
+        }
+        body { 
+          font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; 
+          padding: 0;
+          color: #000000; 
+          margin: 0;
+          width: 210mm;
+          min-height: 297mm;
+        }
+        .print-header {
+          position: fixed;
+          top: 0;
+          left: 0;
+          right: 0;
+          width: 100%;
+          height: 50px;
+          background: white;
+          border-bottom: 2px solid #000000;
+          padding: 8px 15mm;
+          margin: 0;
+          z-index: 1000;
+          display: flex;
+          align-items: center;
+        }
+        .print-header .header-content {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          width: 100%;
+          gap: 12px;
+        }
+        .print-header .clinic-brand {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          flex: 1;
+          min-width: 0;
+        }
+        .print-header .clinic-icon {
+          width: 40px;
+          height: 40px;
+          background: white;
+          border: 1px solid #000000;
+          border-radius: 4px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 2px;
+          flex-shrink: 0;
+        }
+        .print-header .clinic-icon img {
+          width: 100%;
+          height: 100%;
+          object-fit: contain;
+          border-radius: 6px;
+        }
+        .print-header .clinic-details {
+          flex: 1;
+          min-width: 0;
+        }
+        .print-header h1 {
+          font-size: 18px;
+          font-weight: 700;
+          margin: 0 0 2px 0;
+          color: #000000;
+          letter-spacing: -0.3px;
+          line-height: 1.2;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+        .print-header .clinic-info {
+          font-size: 9px;
+          color: #000000;
+          margin: 0;
+          display: flex;
+          flex-wrap: wrap;
+          gap: 8px;
+          align-items: center;
+          line-height: 1.3;
+        }
+        .print-header .clinic-info-item {
+          display: flex;
+          align-items: center;
+          gap: 4px;
+          white-space: nowrap;
+        }
+        .print-header .report-badge {
+          background: white;
+          color: #000000;
+          border: 1px solid #000000;
+          padding: 4px 12px;
+          border-radius: 4px;
+          font-size: 10px;
+          font-weight: 600;
+          white-space: nowrap;
+          flex-shrink: 0;
+        }
+        .print-footer {
+          position: fixed;
+          bottom: 0;
+          left: 0;
+          right: 0;
+          width: 100%;
+          height: 45px;
+          background: white;
+          border-top: 2px solid #000000;
+          padding: 6px 15mm;
+          font-size: 9px;
+          color: #000000;
+          text-align: center;
+          z-index: 1000;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+        .print-footer .footer-content {
+          display: flex;
+          flex-direction: column;
+          gap: 3px;
+          width: 100%;
+        }
+        .print-footer .footer-main {
+          font-weight: 600;
+          color: #000000;
+          font-size: 10px;
+          line-height: 1.2;
+        }
+        .print-footer .footer-secondary {
+          display: flex;
+          justify-content: center;
+          align-items: center;
+          gap: 8px;
+          flex-wrap: wrap;
+          color: #000000;
+          font-size: 8px;
+          line-height: 1.2;
+        }
+        .print-footer .footer-divider {
+          color: #000000;
+        }
+        .print-footer .page-info {
+          background: white;
+          border: 1px solid #000000;
+          padding: 2px 8px;
+          border-radius: 4px;
+          font-weight: 600;
+          color: #000000;
+        }
+        .print-content {
+          margin-top: 50px;
+          margin-bottom: 45px;
+          padding: 0 15mm;
+          min-height: calc(297mm - 95px);
+        }
+        h2 { 
+          font-size: 14px; 
+          margin: 12px 0 6px 0;
+          color: #000000;
+          font-weight: 600;
+          page-break-after: avoid;
+        }
+        table { 
+          width: 100%; 
+          border-collapse: collapse; 
+          margin-top: 6px;
+          margin-bottom: 12px;
+          font-size: 9px;
+        }
+        th, td { 
+          border: 1px solid #000000; 
+          padding: 5px 8px; 
+          font-size: 9px;
+          text-align: left;
+          line-height: 1.3;
+        }
+        th { 
+          background: #ffffff; 
+          border: 2px solid #000000;
+          font-weight: 600;
+          font-size: 9px;
+        }
+        .muted { color: #000000; }
+        .summary { 
+          margin-top: 4px; 
+          font-size: 9px;
+          color: #000000;
+          line-height: 1.4;
+        }
+        .no-show { 
+          color: #000000; 
+          font-weight: 600; 
+        }
+        .range-label {
+          font-size: 12px;
+          font-weight: 600;
+          color: #000000;
+          margin-bottom: 8px;
+          page-break-after: avoid;
+        }
+        section {
+          page-break-inside: avoid;
+          margin-bottom: 16px;
+        }
+        @media print {
+          @page {
+            size: A4;
+            margin: 50px 15mm 45px 15mm;
+          }
+          body {
+            width: 210mm;
+            min-height: 297mm;
+          }
+          .print-header, .print-footer {
+            position: fixed;
+          }
+          .print-content {
+            margin-top: 50px;
+            margin-bottom: 45px;
+          }
+          table { 
+            page-break-inside: avoid;
+            font-size: 9px;
+          }
+          section { 
+            page-break-inside: avoid;
+            page-break-after: auto;
+          }
+          tr {
+            page-break-inside: avoid;
+          }
+        }
       </style>`;
+
+    const printHeader = `
+      <div class="print-header">
+        <div class="header-content">
+          <div class="clinic-brand">
+            <div class="clinic-icon">
+              <img src="/221.jpg" alt="${clinicName} Logo" />
+            </div>
+            <div class="clinic-details">
+              <h1>${clinicName}</h1>
+              <div class="clinic-info">
+                ${clinicAddress ? `<span class="clinic-info-item">📍 ${clinicAddress}</span>` : ""}
+                ${clinicPhone ? `<span class="clinic-info-item">📞 ${clinicPhone}</span>` : ""}
+                ${clinicEmail ? `<span class="clinic-info-item">✉️ ${clinicEmail}</span>` : ""}
+              </div>
+            </div>
+          </div>
+          <div class="report-badge">${rangeLabel} Report</div>
+        </div>
+      </div>`;
+
+    const printFooter = `
+      <div class="print-footer">
+        <div class="footer-content">
+          <div class="footer-main">
+            📋 Appointments Report: ${rangeLabel}
+          </div>
+          <div class="footer-secondary">
+            <span>🕒 Printed on ${new Date().toLocaleDateString("en-US", { 
+              year: "numeric", 
+              month: "long", 
+              day: "numeric",
+              hour: "2-digit",
+              minute: "2-digit"
+            })}</span>
+            <span class="footer-divider">•</span>
+            <span>${clinicName}</span>
+            <span class="footer-divider">•</span>
+            <span class="page-info">Page <span class="page-number"></span></span>
+          </div>
+        </div>
+      </div>`;
 
     const sections = Object.entries(groupedByDoctor)
       .map(([doctor, rows]) => {
@@ -140,13 +535,25 @@ const Reports = () => {
                         const month = r.appointmentDate.getMonth();
                         const day = r.appointmentDate.getDate();
                         formattedDate = new Date(year, month, day).toLocaleDateString();
-                      } else if (typeof r.appointmentDate === "string") {
-                        const datePart = r.appointmentDate.split("T")[0];
-                        const [year, month, day] = datePart.split("-");
-                        formattedDate = new Date(parseInt(year), parseInt(month) - 1, parseInt(day)).toLocaleDateString();
-                      } else {
-                        formattedDate = new Date(r.appointmentDate).toLocaleDateString();
-                      }
+                      } else                   if (typeof r.appointmentDate === "string") {
+                    const datePart = r.appointmentDate.split("T")[0];
+                    const [year, month, day] = datePart.split("-");
+                    if (year && month && day) {
+                      formattedDate = new Date(parseInt(year, 10), parseInt(month, 10) - 1, parseInt(day, 10)).toLocaleDateString("en-US", {
+                        weekday: "short",
+                        month: "short",
+                        day: "numeric",
+                        year: "numeric"
+                      });
+                    }
+                  } else {
+                    formattedDate = new Date(r.appointmentDate).toLocaleDateString("en-US", {
+                      weekday: "short",
+                      month: "short",
+                      day: "numeric",
+                      year: "numeric"
+                    });
+                  }
                     }
                     return `
                 <tr>
@@ -171,9 +578,34 @@ const Reports = () => {
       })
       .join("");
 
-    const now = new Date();
-    const header = `<h1>Appointments (${rangeLabel}) — Printed ${now.toLocaleDateString()} ${now.toLocaleTimeString()}</h1>`;
-    return `<!doctype html><html><head><meta charset="utf-8"/>${styles}</head><body>${header}${sections}</body></html>`;
+    const content = `
+      <div class="print-content">
+        <div class="range-label">Appointments Report: ${rangeLabel}</div>
+        ${sections}
+      </div>`;
+
+    return `<!doctype html>
+      <html>
+        <head>
+          <meta charset="utf-8"/>
+          <title>${clinicName} - Appointments Report</title>
+          ${styles}
+          <script>
+            window.onload = function() {
+              // Update page numbers
+              const pageNumbers = document.querySelectorAll('.page-number');
+              pageNumbers.forEach((el, idx) => {
+                el.textContent = (idx + 1);
+              });
+            };
+          </script>
+        </head>
+        <body>
+          ${printHeader}
+          ${content}
+          ${printFooter}
+        </body>
+      </html>`;
   };
 
   const handlePrint = (mode) => {
@@ -186,9 +618,10 @@ const Reports = () => {
     endOfToday.setHours(23, 59, 59, 999);
     
     const weekStart = new Date(today);
-    weekStart.setDate(today.getDate() - today.getDay());
+    const dayOfWeek = today.getDay();
+    weekStart.setDate(today.getDate() - dayOfWeek); // Sunday
     const weekEnd = new Date(weekStart);
-    weekEnd.setDate(weekStart.getDate() + 6);
+    weekEnd.setDate(weekStart.getDate() + 6); // Saturday
     weekEnd.setHours(23, 59, 59, 999);
     
     const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
@@ -196,9 +629,12 @@ const Reports = () => {
     monthEnd.setHours(23, 59, 59, 999);
 
     // Filter appointments based on mode and selected doctors
+    // Use dynamic doctor names for filtering
+    const doctorsToFilter = selectedDoctors.length === 0 ? getDoctorNames() : selectedDoctors;
+    
     const base = allAppointments.filter((a) => {
-      // Filter by selected doctors
-      if (selectedDoctors.length > 0 && !selectedDoctors.includes(a.doctorName)) {
+      // Filter by selected doctors - use flexible matching
+      if (!matchesDoctorFilter(a.doctorName, doctorsToFilter)) {
         return false;
       }
       
@@ -211,17 +647,27 @@ const Reports = () => {
       // Filter by date range
       if (mode !== "no-show") {
         // Parse appointment date correctly to avoid timezone issues
+        if (!a.appointmentDate) return false;
+        
         let appointmentDate;
-        if (a.appointmentDate instanceof Date) {
-          appointmentDate = new Date(a.appointmentDate);
-          appointmentDate.setHours(0, 0, 0, 0);
-        } else if (typeof a.appointmentDate === "string") {
-          const datePart = a.appointmentDate.split("T")[0];
-          const [year, month, day] = datePart.split("-");
-          appointmentDate = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
-        } else {
-          appointmentDate = new Date(a.appointmentDate);
-          appointmentDate.setHours(0, 0, 0, 0);
+        try {
+          if (a.appointmentDate instanceof Date) {
+            appointmentDate = new Date(a.appointmentDate);
+            if (isNaN(appointmentDate.getTime())) return false;
+            appointmentDate.setHours(0, 0, 0, 0);
+          } else if (typeof a.appointmentDate === "string") {
+            const datePart = a.appointmentDate.split("T")[0];
+            const [year, month, day] = datePart.split("-");
+            if (!year || !month || !day) return false;
+            appointmentDate = new Date(parseInt(year, 10), parseInt(month, 10) - 1, parseInt(day, 10));
+            if (isNaN(appointmentDate.getTime())) return false;
+          } else {
+            appointmentDate = new Date(a.appointmentDate);
+            if (isNaN(appointmentDate.getTime())) return false;
+            appointmentDate.setHours(0, 0, 0, 0);
+          }
+        } catch (error) {
+          return false;
         }
         
         if (mode === "day") {
@@ -252,12 +698,27 @@ const Reports = () => {
       doctorName: a.doctorName,
     }));
 
-    // Group by doctor (only include selected doctors)
+    // Group by doctor (only include selected doctors) - use flexible matching
     const grouped = rows.reduce((acc, r) => {
-      if (selectedDoctors.length === 0 || selectedDoctors.includes(r.doctorName)) {
+      // Map appointment doctor name to settings doctor name for matching
+      const mappedDoctorName = mapDoctorNameToSettings(r.doctorName);
+      
+      // Check if this doctor should be included
+      const shouldInclude = doctorsToFilter.length === 0 || 
+        doctorsToFilter.some(selectedDoc => {
+          const mappedSelected = mapDoctorNameToSettings(selectedDoc);
+          return mappedDoctorName === mappedSelected || 
+                 r.doctorName === selectedDoc ||
+                 selectedDoc === mappedDoctorName ||
+                 matchesDoctorFilter(r.doctorName, [selectedDoc]);
+        });
+      
+      if (shouldInclude) {
+        // Use the original doctor name as key
         acc[r.doctorName] = acc[r.doctorName] || [];
         acc[r.doctorName].push(r);
       }
+      
       return acc;
     }, {});
 
@@ -271,7 +732,7 @@ const Reports = () => {
     
     // Check if there's any data to print
     if (Object.keys(grouped).length === 0) {
-      alert(`No appointments found for ${label} with the selected doctor filter.`);
+      alert(`No appointments found for ${label} with the selected filters.`);
       return;
     }
 
@@ -354,40 +815,53 @@ const Reports = () => {
         <CardContent>
           <div className="flex flex-wrap gap-3">
             <Button
-              variant={selectedDoctors.length === allDoctorNames.length ? "default" : "outline"}
+              variant={selectedDoctors.length === 0 ? "default" : "outline"}
               size="sm"
-              onClick={() => setSelectedDoctors(allDoctorNames)}
-              className={selectedDoctors.length === allDoctorNames.length ? "bg-blue-600 hover:bg-blue-700" : ""}
+              onClick={() => setSelectedDoctors([])}
+              className={selectedDoctors.length === 0 ? "bg-blue-600 hover:bg-blue-700 text-white" : ""}
             >
               Both Doctors
             </Button>
-            {allDoctorNames.map((doctor) => {
-              const isSelected = selectedDoctors.includes(doctor);
+            {dynamicDoctorNames.map((doctor) => {
+              // Check if this doctor is selected (using flexible matching)
+              const isSelected = selectedDoctors.length > 0 && selectedDoctors.some(selectedDoc => {
+                return selectedDoc === doctor || 
+                       mapDoctorNameToSettings(selectedDoc) === doctor ||
+                       mapDoctorNameToSettings(doctor) === selectedDoc;
+              });
+              
               return (
                 <Button
                   key={doctor}
                   variant={isSelected ? "default" : "outline"}
                   size="sm"
                   onClick={() => {
-                    if (isSelected) {
-                      // If clicking selected, remove it (but keep at least one)
-                      if (selectedDoctors.length > 1) {
-                        setSelectedDoctors(selectedDoctors.filter(d => d !== doctor));
-                      }
+                    // If "Both Doctors" is selected (empty array), toggle to just this doctor
+                    if (selectedDoctors.length === 0) {
+                      setSelectedDoctors([doctor]);
+                    } else if (isSelected) {
+                      // If clicking selected doctor, remove it
+                      const newSelected = selectedDoctors.filter(d => {
+                        const mappedD = mapDoctorNameToSettings(d);
+                        const mappedDoctor = mapDoctorNameToSettings(doctor);
+                        return mappedD !== mappedDoctor && d !== doctor;
+                      });
+                      // If removing last one, set to empty (show all)
+                      setSelectedDoctors(newSelected.length === 0 ? [] : newSelected);
                     } else {
                       // If clicking unselected, add it
                       setSelectedDoctors([...selectedDoctors, doctor]);
                     }
                   }}
-                  className={isSelected ? "bg-blue-600 hover:bg-blue-700" : ""}
+                  className={isSelected ? "bg-blue-600 hover:bg-blue-700 text-white" : ""}
                 >
-                  {doctor.includes("Maria") ? "OB-GYNE" : "Pediatrician"}
+                  {doctor.includes("Maria") || doctor.toLowerCase().includes("ob") ? "OB-GYNE" : "Pediatrician"}
                 </Button>
               );
             })}
           </div>
           <p className="text-sm text-gray-600 mt-3">
-            Selected: {selectedDoctors.length === 0 ? "None" : selectedDoctors.join(", ")}
+            Selected: {selectedDoctors.length === 0 ? "Both Doctors" : selectedDoctors.join(", ")}
           </p>
         </CardContent>
       </Card>
