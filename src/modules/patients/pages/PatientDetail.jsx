@@ -15,6 +15,8 @@ import {
   DialogFooter,
   patientsAPI,
   appointmentsAPI,
+  settingsAPI,
+  extractData,
   formatDate,
   calculateAge,
   getStatusColor,
@@ -53,6 +55,7 @@ import {
   Edit3,
   Lock,
   Unlock,
+  Printer,
 } from "lucide-react";
 // Helper component for displaying info items
 const InfoItem = ({ label, value, className = "" }) => (
@@ -253,6 +256,11 @@ const PatientDetail = () => {
   const [patient, setPatient] = useState(null);
   const [appointments, setAppointments] = useState([]);
   const [activeTab, setActiveTab] = useState("overview");
+  const [clinicSettings, setClinicSettings] = useState(null);
+  const [printSelectionModalOpen, setPrintSelectionModalOpen] = useState(false);
+  const [selectedConsultations, setSelectedConsultations] = useState([]);
+  const [selectedImmunizations, setSelectedImmunizations] = useState([]);
+  const [printAllRecords, setPrintAllRecords] = useState(true);
 
   // Modal states
   const [editModalOpen, setEditModalOpen] = useState(false);
@@ -329,7 +337,31 @@ const PatientDetail = () => {
     if (patientId) {
       fetchPatientData();
     }
+    fetchClinicSettings();
   }, [patientId]);
+
+  const fetchClinicSettings = async () => {
+    try {
+      const response = await settingsAPI.getClinicSettings();
+      const data = extractData(response);
+      setClinicSettings(data);
+    } catch (error) {
+      // Suppress CanceledError (expected from request throttling)
+      if (error?.code !== 'ERR_CANCELED' && error?.name !== 'CanceledError' && !error?.silent) {
+        console.error("Error fetching clinic settings:", error);
+      }
+      // Fallback to localStorage if API fails
+      const savedSettings = localStorage.getItem("clinic_settings");
+      if (savedSettings) {
+        try {
+          const settings = JSON.parse(savedSettings);
+          setClinicSettings(settings);
+        } catch (e) {
+          console.error("Error parsing localStorage settings:", e);
+        }
+      }
+    }
+  };
 
   const fetchPatientData = async () => {
     setLoading(true);
@@ -349,8 +381,11 @@ const PatientDetail = () => {
       );
       setAppointments(appointmentsResponse.data?.data?.appointments || []);
     } catch (error) {
-      console.error("Error fetching patient data:", error);
-      toast.error("Failed to load patient data");
+      // Don't log or show toast for canceled/silent errors
+      if (!error?.silent) {
+        console.error("Error fetching patient data:", error);
+        toast.error("Failed to load patient data");
+      }
     } finally {
       setLoading(false);
     }
@@ -521,6 +556,627 @@ const PatientDetail = () => {
     }
   };
 
+  const printHtml = (html) => {
+    const w = window.open("", "_blank");
+    if (!w) return;
+    w.document.open();
+    w.document.write(html);
+    w.document.close();
+    w.focus();
+    w.print();
+  };
+
+  const handlePrintMedicalRecords = () => {
+    if (!patient) return;
+    setPrintSelectionModalOpen(true);
+  };
+
+  const handlePrintSelectedRecords = () => {
+    if (!patient) return;
+
+    const clinicName = clinicSettings?.clinicName || "VM Mother and Child Clinic";
+    const clinicAddress = clinicSettings?.address || "";
+    const clinicPhone = clinicSettings?.phone || "";
+    const clinicEmail = clinicSettings?.email || "";
+
+    let consultations =
+      patient.patientType === "ob-gyne"
+        ? patient.obGyneRecord?.consultations || []
+        : patient.pediatricRecord?.consultations || [];
+
+    let immunizations = patient.patientType === "pediatric"
+      ? patient.pediatricRecord?.immunizations || []
+      : [];
+
+    // Filter based on selection if not printing all
+    if (!printAllRecords) {
+      if (selectedConsultations.length > 0) {
+        consultations = consultations.filter((_, idx) => 
+          selectedConsultations.includes(consultations.length - 1 - idx)
+        );
+      } else {
+        consultations = [];
+      }
+      
+      if (selectedImmunizations.length > 0) {
+        immunizations = immunizations.filter((_, idx) => 
+          selectedImmunizations.includes(immunizations.length - 1 - idx)
+        );
+      } else {
+        immunizations = [];
+      }
+    }
+
+    const patientName = getPatientName(patient);
+    const patientIdDisplay = patient.patientId || patient.patientNumber || "N/A";
+    const patientType = patient.patientType === "pediatric" ? "Pediatric" : "OB-GYNE";
+
+    const styles = `
+      <style>
+        @page {
+          size: A4;
+          margin: 50px 15mm 45px 15mm;
+        }
+        @page :first {
+          margin-top: 50px;
+        }
+        @page :left {
+          margin-top: 50px;
+        }
+        @page :right {
+          margin-top: 50px;
+        }
+        * {
+          box-sizing: border-box;
+        }
+        body { 
+          font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; 
+          padding: 0;
+          color: #000000; 
+          margin: 0;
+          width: 210mm;
+          min-height: 297mm;
+        }
+        .print-header {
+          position: fixed;
+          top: 0;
+          left: 0;
+          right: 0;
+          width: 100%;
+          height: 50px;
+          background: white;
+          border-bottom: 2px solid #000000;
+          padding: 8px 15mm;
+          margin: 0;
+          z-index: 1000;
+          display: flex;
+          align-items: center;
+        }
+        .print-header .header-content {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          width: 100%;
+          gap: 12px;
+        }
+        .print-header .clinic-brand {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          flex: 1;
+          min-width: 0;
+        }
+        .print-header .clinic-icon {
+          width: 40px;
+          height: 40px;
+          background: white;
+          border: 1px solid #000000;
+          border-radius: 4px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 2px;
+          flex-shrink: 0;
+        }
+        .print-header .clinic-icon img {
+          width: 100%;
+          height: 100%;
+          object-fit: contain;
+          border-radius: 6px;
+        }
+        .print-header .clinic-details {
+          flex: 1;
+          min-width: 0;
+        }
+        .print-header h1 {
+          font-size: 18px;
+          font-weight: 700;
+          margin: 0 0 2px 0;
+          color: #000000;
+          letter-spacing: -0.3px;
+          line-height: 1.2;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+        .print-header .clinic-info {
+          font-size: 9px;
+          color: #000000;
+          margin: 0;
+          display: flex;
+          flex-wrap: wrap;
+          gap: 8px;
+          align-items: center;
+          line-height: 1.3;
+        }
+        .print-header .clinic-info-item {
+          display: flex;
+          align-items: center;
+          gap: 4px;
+          white-space: nowrap;
+        }
+        .print-header .report-badge {
+          background: white;
+          color: #000000;
+          border: 1px solid #000000;
+          padding: 4px 12px;
+          border-radius: 4px;
+          font-size: 10px;
+          font-weight: 600;
+          white-space: nowrap;
+          flex-shrink: 0;
+        }
+        .print-footer {
+          position: fixed;
+          bottom: 0;
+          left: 0;
+          right: 0;
+          width: 100%;
+          height: 45px;
+          background: white;
+          border-top: 2px solid #000000;
+          padding: 6px 15mm;
+          font-size: 9px;
+          color: #000000;
+          text-align: center;
+          z-index: 1000;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+        .print-footer .footer-content {
+          display: flex;
+          flex-direction: column;
+          gap: 3px;
+          width: 100%;
+        }
+        .print-footer .footer-main {
+          font-weight: 600;
+          color: #000000;
+          font-size: 10px;
+          line-height: 1.2;
+        }
+        .print-footer .footer-secondary {
+          display: flex;
+          justify-content: center;
+          align-items: center;
+          gap: 8px;
+          flex-wrap: wrap;
+          color: #000000;
+          font-size: 8px;
+          line-height: 1.2;
+        }
+        .print-footer .footer-divider {
+          color: #000000;
+        }
+        .print-footer .page-info {
+          background: white;
+          border: 1px solid #000000;
+          padding: 2px 8px;
+          border-radius: 4px;
+          font-weight: 600;
+          color: #000000;
+        }
+        .print-content {
+          margin-top: 50px;
+          margin-bottom: 45px;
+          padding: 0 15mm;
+          min-height: calc(297mm - 95px);
+        }
+        .patient-info {
+          margin-bottom: 20px;
+          padding: 12px;
+          border: 1px solid #000000;
+          border-radius: 4px;
+        }
+        .patient-info h2 {
+          font-size: 14px;
+          font-weight: 600;
+          margin: 0 0 8px 0;
+          color: #000000;
+        }
+        .patient-info-grid {
+          display: grid;
+          grid-template-columns: repeat(2, 1fr);
+          gap: 8px;
+          font-size: 10px;
+        }
+        .patient-info-item {
+          display: flex;
+          gap: 4px;
+        }
+        .patient-info-label {
+          font-weight: 600;
+          color: #000000;
+        }
+        .patient-info-value {
+          color: #000000;
+        }
+        h3 {
+          font-size: 12px;
+          font-weight: 600;
+          margin: 24px 0 12px 0;
+          color: #000000;
+          page-break-after: avoid;
+          break-after: avoid;
+        }
+        h3:first-of-type {
+          margin-top: 16px;
+        }
+        .consultation-section {
+          margin-top: 100px;
+          margin-bottom: 30px;
+          padding-top: 30px;
+          padding-bottom: 12px;
+          padding-left: 12px;
+          padding-right: 12px;
+          border: 1px solid #000000;
+          border-radius: 4px;
+          page-break-inside: avoid;
+          break-inside: avoid;
+          page-break-before: auto;
+          orphans: 3;
+          widows: 3;
+        }
+        .consultation-section:first-child {
+          margin-top: 0;
+        }
+        .consultation-section:last-child {
+          margin-bottom: 0;
+        }
+        /* Add extra bottom margin to even-numbered records (2nd, 4th, 6th, etc.) */
+        .consultation-section:nth-child(even) {
+          margin-bottom: 60px;
+        }
+        .consultation-section:nth-child(even):last-child {
+          margin-bottom: 0;
+        }
+        .consultation-header {
+          font-size: 11px;
+          font-weight: 600;
+          margin-bottom: 8px;
+          color: #000000;
+        }
+        .consultation-grid {
+          display: grid;
+          grid-template-columns: repeat(2, 1fr);
+          gap: 8px;
+          font-size: 9px;
+          margin-bottom: 8px;
+        }
+        .consultation-item {
+          display: flex;
+          flex-direction: column;
+          gap: 2px;
+        }
+        .consultation-label {
+          font-weight: 600;
+          color: #000000;
+        }
+        .consultation-value {
+          color: #000000;
+        }
+        .immunization-section {
+          margin-top: 60px;
+          margin-bottom: 30px;
+          padding-top: 20px;
+          padding-bottom: 10px;
+          padding-left: 10px;
+          padding-right: 10px;
+          border: 1px solid #000000;
+          border-radius: 4px;
+          page-break-inside: avoid;
+          break-inside: avoid;
+          page-break-before: auto;
+          orphans: 3;
+          widows: 3;
+        }
+        .immunization-section:first-child {
+          margin-top: 0;
+        }
+        .immunization-section:last-child {
+          margin-bottom: 0;
+        }
+        /* Add extra bottom margin to even-numbered records (2nd, 4th, 6th, etc.) */
+        .immunization-section:nth-child(even) {
+          margin-bottom: 60px;
+        }
+        .immunization-section:nth-child(even):last-child {
+          margin-bottom: 0;
+        }
+        .immunization-header {
+          font-size: 11px;
+          font-weight: 600;
+          margin-bottom: 6px;
+          color: #000000;
+        }
+        .immunization-grid {
+          display: grid;
+          grid-template-columns: repeat(3, 1fr);
+          gap: 6px;
+          font-size: 9px;
+        }
+        .immunization-item {
+          display: flex;
+          flex-direction: column;
+          gap: 2px;
+        }
+        .immunization-label {
+          font-weight: 600;
+          color: #000000;
+        }
+        .immunization-value {
+          color: #000000;
+        }
+        @media print {
+          @page {
+            size: A4;
+            margin: 50px 15mm 45px 15mm;
+          }
+          body {
+            width: 210mm;
+            min-height: 297mm;
+          }
+          .print-header, .print-footer {
+            position: fixed;
+          }
+          .print-content {
+            margin-top: 50px;
+            margin-bottom: 45px;
+          }
+          .consultation-section, .immunization-section {
+            page-break-inside: avoid;
+            break-inside: avoid;
+            page-break-before: auto;
+            margin-top: 50px !important;
+            orphans: 3;
+            widows: 3;
+          }
+          .consultation-section:first-child,
+          .immunization-section:first-child {
+            margin-top: 0 !important;
+          }
+          h3 {
+            page-break-after: avoid;
+            break-after: avoid;
+            margin-top: 24px;
+          }
+          h3:first-of-type {
+            margin-top: 16px;
+          }
+          .patient-info {
+            page-break-after: avoid;
+            break-after: avoid;
+          }
+          /* Ensure enough space at top of new pages */
+          @page {
+            margin-top: 50px;
+            margin-bottom: 45px;
+          }
+          @page :first {
+            margin-top: 50px;
+          }
+          @page :left {
+            margin-top: 50px;
+          }
+          @page :right {
+            margin-top: 50px;
+          }
+          .consultation-section, .immunization-section {
+            margin-top: 60px !important;
+            padding-top: 20px !important;
+          }
+          .consultation-section:first-child,
+          .immunization-section:first-child {
+            margin-top: 0 !important;
+          }
+          /* Add extra bottom margin to even-numbered records in print */
+          .consultation-section:nth-child(even),
+          .immunization-section:nth-child(even) {
+            margin-bottom: 60px !important;
+          }
+          .consultation-section:nth-child(even):last-child,
+          .immunization-section:nth-child(even):last-child {
+            margin-bottom: 0 !important;
+          }
+        }
+      </style>`;
+
+    const printHeader = `
+      <div class="print-header">
+        <div class="header-content">
+          <div class="clinic-brand">
+            <div class="clinic-icon">
+              <img src="/221.jpg" alt="${clinicName} Logo" />
+            </div>
+            <div class="clinic-details">
+              <h1>${clinicName}</h1>
+              <div class="clinic-info">
+                ${clinicAddress ? `<span class="clinic-info-item">📍 ${clinicAddress}</span>` : ""}
+                ${clinicPhone ? `<span class="clinic-info-item">📞 ${clinicPhone}</span>` : ""}
+                ${clinicEmail ? `<span class="clinic-info-item">✉️ ${clinicEmail}</span>` : ""}
+              </div>
+            </div>
+          </div>
+          <div class="report-badge">Medical Records</div>
+        </div>
+      </div>`;
+
+    const printFooter = `
+      <div class="print-footer">
+        <div class="footer-content">
+          <div class="footer-main">
+            📋 Medical Records: ${patientName}
+          </div>
+          <div class="footer-secondary">
+            <span>🕒 Printed on ${new Date().toLocaleDateString("en-US", { 
+              year: "numeric", 
+              month: "long", 
+              day: "numeric",
+              hour: "2-digit",
+              minute: "2-digit"
+            })}</span>
+            <span class="footer-divider">•</span>
+            <span>${clinicName}</span>
+            <span class="footer-divider">•</span>
+            <span class="page-info">Page <span class="page-number"></span></span>
+          </div>
+        </div>
+      </div>`;
+
+    const patientInfoSection = `
+      <div class="patient-info">
+        <h2>Patient Information</h2>
+        <div class="patient-info-grid">
+          <div class="patient-info-item">
+            <span class="patient-info-label">Name:</span>
+            <span class="patient-info-value">${patientName}</span>
+          </div>
+          <div class="patient-info-item">
+            <span class="patient-info-label">Patient ID:</span>
+            <span class="patient-info-value">${patientIdDisplay}</span>
+          </div>
+          <div class="patient-info-item">
+            <span class="patient-info-label">Type:</span>
+            <span class="patient-info-value">${patientType}</span>
+          </div>
+          ${patient.patientType === "pediatric" && patient.pediatricRecord?.nameOfMother ? `
+          <div class="patient-info-item">
+            <span class="patient-info-label">Mother's Name:</span>
+            <span class="patient-info-value">${patient.pediatricRecord.nameOfMother}</span>
+          </div>
+          ` : ""}
+          ${patient.patientType === "pediatric" && patient.pediatricRecord?.birthDate ? `
+          <div class="patient-info-item">
+            <span class="patient-info-label">Date of Birth:</span>
+            <span class="patient-info-value">${formatDate(patient.pediatricRecord.birthDate)}</span>
+          </div>
+          ` : ""}
+          ${patient.patientType === "ob-gyne" && patient.obGyneRecord?.birthDate ? `
+          <div class="patient-info-item">
+            <span class="patient-info-label">Date of Birth:</span>
+            <span class="patient-info-value">${formatDate(patient.obGyneRecord.birthDate)}</span>
+          </div>
+          ` : ""}
+          ${patient.patientType === "pediatric" && patient.pediatricRecord?.contactNumber ? `
+          <div class="patient-info-item">
+            <span class="patient-info-label">Contact:</span>
+            <span class="patient-info-value">${patient.pediatricRecord.contactNumber}</span>
+          </div>
+          ` : ""}
+          ${patient.patientType === "ob-gyne" && patient.obGyneRecord?.contactNumber ? `
+          <div class="patient-info-item">
+            <span class="patient-info-label">Contact:</span>
+            <span class="patient-info-value">${patient.obGyneRecord.contactNumber}</span>
+          </div>
+          ` : ""}
+        </div>
+      </div>`;
+
+    const consultationsHtml = consultations.length > 0 ? `
+      <h3>Consultation Records</h3>
+      ${consultations.slice().reverse().map((consultation, idx) => {
+        if (patient.patientType === "ob-gyne") {
+          return `
+            <div class="consultation-section">
+              <div class="consultation-header">Consultation #${consultations.length - idx} - ${formatDate(consultation.date)}</div>
+              <div class="consultation-grid">
+                ${consultation.bp ? `<div class="consultation-item"><span class="consultation-label">BP:</span><span class="consultation-value">${consultation.bp}</span></div>` : ""}
+                ${consultation.pr ? `<div class="consultation-item"><span class="consultation-label">PR:</span><span class="consultation-value">${consultation.pr}</span></div>` : ""}
+                ${consultation.rr ? `<div class="consultation-item"><span class="consultation-label">RR:</span><span class="consultation-value">${consultation.rr}</span></div>` : ""}
+                ${consultation.temp ? `<div class="consultation-item"><span class="consultation-label">Temp:</span><span class="consultation-value">${consultation.temp}</span></div>` : ""}
+                ${consultation.weight ? `<div class="consultation-item"><span class="consultation-label">Weight:</span><span class="consultation-value">${consultation.weight}</span></div>` : ""}
+                ${consultation.bmi ? `<div class="consultation-item"><span class="consultation-label">BMI:</span><span class="consultation-value">${consultation.bmi}</span></div>` : ""}
+              </div>
+              ${consultation.internalExam ? `<div class="consultation-item" style="margin-top: 8px;"><span class="consultation-label">Internal Exam:</span><span class="consultation-value">${consultation.internalExam}</span></div>` : ""}
+              ${consultation.historyPhysicalExam ? `<div class="consultation-item" style="margin-top: 8px;"><span class="consultation-label">History/Physical Exam:</span><span class="consultation-value">${consultation.historyPhysicalExam}</span></div>` : ""}
+              ${consultation.assessmentPlan ? `<div class="consultation-item" style="margin-top: 8px;"><span class="consultation-label">Assessment/Plan:</span><span class="consultation-value">${consultation.assessmentPlan}</span></div>` : ""}
+              ${consultation.nextAppointment ? `<div class="consultation-item" style="margin-top: 8px;"><span class="consultation-label">Next Appointment:</span><span class="consultation-value">${formatDate(consultation.nextAppointment)}</span></div>` : ""}
+            </div>
+          `;
+        } else {
+          return `
+            <div class="consultation-section">
+              <div class="consultation-header">Consultation #${consultations.length - idx} - ${formatDate(consultation.date)}</div>
+              <div class="consultation-item" style="margin-top: 8px;">
+                <span class="consultation-label">Notes:</span>
+                <span class="consultation-value">${consultation.notes || consultation.assessmentPlan || "N/A"}</span>
+              </div>
+            </div>
+          `;
+        }
+      }).join("")}
+    ` : "<h3>Consultation Records</h3><p>No consultation records found.</p>";
+
+    const immunizationsHtml = immunizations.length > 0 ? `
+      <h3>Immunization Records</h3>
+      ${immunizations.slice().reverse().map((immunization) => `
+        <div class="immunization-section">
+          <div class="immunization-header">${immunization.vaccineName || 'Immunization'} - ${formatDate(immunization.date)}</div>
+          <div class="immunization-grid">
+            ${immunization.batchNumber ? `<div class="immunization-item"><span class="immunization-label">Batch Number:</span><span class="immunization-value">${immunization.batchNumber}</span></div>` : ""}
+            ${immunization.manufacturer ? `<div class="immunization-item"><span class="immunization-label">Manufacturer:</span><span class="immunization-value">${immunization.manufacturer}</span></div>` : ""}
+            ${immunization.site ? `<div class="immunization-item"><span class="immunization-label">Site:</span><span class="immunization-value">${immunization.site}</span></div>` : ""}
+            ${immunization.route ? `<div class="immunization-item"><span class="immunization-label">Route:</span><span class="immunization-value">${immunization.route}</span></div>` : ""}
+            ${immunization.notes ? `<div class="immunization-item" style="grid-column: 1 / -1;"><span class="immunization-label">Notes:</span><span class="immunization-value">${immunization.notes}</span></div>` : ""}
+          </div>
+        </div>
+      `).join("")}
+    ` : "";
+
+    const content = `
+      <div class="print-content">
+        ${patientInfoSection}
+        ${consultationsHtml}
+        ${immunizationsHtml}
+      </div>`;
+
+    const html = `<!doctype html>
+      <html>
+        <head>
+          <meta charset="utf-8"/>
+          <title>${clinicName} - Medical Records: ${patientName}</title>
+          ${styles}
+          <script>
+            window.onload = function() {
+              const pageNumbers = document.querySelectorAll('.page-number');
+              pageNumbers.forEach((el, idx) => {
+                el.textContent = (idx + 1);
+              });
+            };
+          </script>
+        </head>
+        <body>
+          ${printHeader}
+          ${content}
+          ${printFooter}
+        </body>
+      </html>`;
+
+    printHtml(html);
+    setPrintSelectionModalOpen(false);
+  };
+
   if (loading) {
     return (
       <div className="flex justify-center items-center py-12">
@@ -684,6 +1340,14 @@ const PatientDetail = () => {
                 Consultation History
               </h2>
               <div className="flex items-center space-x-2">
+                <Button
+                  variant="outline"
+                  onClick={handlePrintMedicalRecords}
+                  className="flex items-center space-x-2"
+                >
+                  <Printer className="h-4 w-4" />
+                  <span>Print Records</span>
+                </Button>
                 <Button
                   onClick={() => setConsultationModalOpen(true)}
                   className="flex items-center space-x-2"
@@ -1040,6 +1704,138 @@ const PatientDetail = () => {
           onConfirm={handleDeleteConfirm}
           onCancel={() => setDeleteModalOpen(false)}
         />
+      )}
+
+      {/* Print Selection Modal */}
+      {printSelectionModalOpen && patient && (
+        <Dialog open={printSelectionModalOpen} onOpenChange={setPrintSelectionModalOpen}>
+          <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Select Medical Records to Print</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-6 py-4">
+              {/* Print All Option */}
+              <div className="flex items-center space-x-2">
+                <input
+                  type="checkbox"
+                  id="printAll"
+                  checked={printAllRecords}
+                  onChange={(e) => {
+                    setPrintAllRecords(e.target.checked);
+                    if (e.target.checked) {
+                      setSelectedConsultations([]);
+                      setSelectedImmunizations([]);
+                    }
+                  }}
+                  className="w-4 h-4"
+                />
+                <label htmlFor="printAll" className="text-sm font-medium cursor-pointer">
+                  Print All Medical Records
+                </label>
+              </div>
+
+              {!printAllRecords && (() => {
+                const consultationsList =
+                  patient.patientType === "ob-gyne"
+                    ? patient.obGyneRecord?.consultations || []
+                    : patient.pediatricRecord?.consultations || [];
+
+                const immunizationsList = patient.patientType === "pediatric"
+                  ? patient.pediatricRecord?.immunizations || []
+                  : [];
+
+                return (
+                  <>
+                    {/* Consultations Selection */}
+                    {consultationsList.length > 0 && (
+                      <div>
+                        <h3 className="text-sm font-semibold mb-3">Consultation Records</h3>
+                        <div className="space-y-2 max-h-48 overflow-y-auto border rounded p-3">
+                          {consultationsList.slice().reverse().map((consultation, idx) => {
+                            const originalIdx = consultationsList.length - 1 - idx;
+                            return (
+                              <div key={idx} className="flex items-center space-x-2">
+                                <input
+                                  type="checkbox"
+                                  id={`consultation-${idx}`}
+                                  checked={selectedConsultations.includes(originalIdx)}
+                                  onChange={(e) => {
+                                    if (e.target.checked) {
+                                      setSelectedConsultations([...selectedConsultations, originalIdx]);
+                                    } else {
+                                      setSelectedConsultations(selectedConsultations.filter(i => i !== originalIdx));
+                                    }
+                                  }}
+                                  className="w-4 h-4"
+                                />
+                                <label htmlFor={`consultation-${idx}`} className="text-sm cursor-pointer flex-1">
+                                  Consultation #{consultationsList.length - idx} - {formatDate(consultation.date)}
+                                </label>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Immunizations Selection (Pediatric only) */}
+                    {isPediatric && immunizationsList.length > 0 && (
+                      <div>
+                        <h3 className="text-sm font-semibold mb-3">Immunization Records</h3>
+                        <div className="space-y-2 max-h-48 overflow-y-auto border rounded p-3">
+                          {immunizationsList.slice().reverse().map((immunization, idx) => {
+                            const originalIdx = immunizationsList.length - 1 - idx;
+                            return (
+                              <div key={idx} className="flex items-center space-x-2">
+                                <input
+                                  type="checkbox"
+                                  id={`immunization-${idx}`}
+                                  checked={selectedImmunizations.includes(originalIdx)}
+                                  onChange={(e) => {
+                                    if (e.target.checked) {
+                                      setSelectedImmunizations([...selectedImmunizations, originalIdx]);
+                                    } else {
+                                      setSelectedImmunizations(selectedImmunizations.filter(i => i !== originalIdx));
+                                    }
+                                  }}
+                                  className="w-4 h-4"
+                                />
+                                <label htmlFor={`immunization-${idx}`} className="text-sm cursor-pointer flex-1">
+                                  {immunization.vaccineName || 'Immunization'} - {formatDate(immunization.date)}
+                                </label>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
+            </div>
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setPrintSelectionModalOpen(false);
+                  setPrintAllRecords(true);
+                  setSelectedConsultations([]);
+                  setSelectedImmunizations([]);
+                }}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handlePrintSelectedRecords}
+                disabled={!printAllRecords && selectedConsultations.length === 0 && selectedImmunizations.length === 0}
+                className="bg-blue-600 hover:bg-blue-700"
+              >
+                <Printer className="h-4 w-4 mr-2" />
+                Print Selected
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       )}
     </div>
   );

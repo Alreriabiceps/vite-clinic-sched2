@@ -1,6 +1,6 @@
 import { Card, CardContent, CardHeader, CardTitle, Button, LoadingSpinner, appointmentsAPI, settingsAPI, extractData } from '../../shared';
 import React, { useState, useEffect, useMemo } from 'react';
-import { Printer, Filter, Users, Globe, UserPlus, TrendingUp } from 'lucide-react';
+import { Printer, Filter, Users, Globe, UserPlus, TrendingUp, Calendar, FileText, RefreshCw } from 'lucide-react';
 
 const allDoctorNames = [
   "Dr. Maria Sarah L. Manaloto",
@@ -638,14 +638,20 @@ const Reports = () => {
         return false;
       }
       
-      // Filter by status for no-show
+      // Filter by status for status-based reports (no-show, cancelled, completed)
       if (mode === "no-show") {
         const status = (a.status || "").toLowerCase();
         if (status !== "no-show") return false;
+      } else if (mode === "cancelled") {
+        const status = (a.status || "").toLowerCase();
+        if (status !== "cancelled") return false;
+      } else if (mode === "completed") {
+        const status = (a.status || "").toLowerCase();
+        if (status !== "completed") return false;
       }
       
-      // Filter by date range
-      if (mode !== "no-show") {
+      // Filter by date range for date-based reports (day, week, month)
+      if (mode === "day" || mode === "week" || mode === "month") {
         // Parse appointment date correctly to avoid timezone issues
         if (!a.appointmentDate) return false;
         
@@ -728,6 +734,8 @@ const Reports = () => {
     else if (mode === "week") label = "This Week";
     else if (mode === "month") label = "This Month";
     else if (mode === "no-show") label = "No-Show Appointments";
+    else if (mode === "cancelled") label = "Cancelled Appointments";
+    else if (mode === "completed") label = "Completed Appointments";
     else label = "All Appointments";
     
     // Check if there's any data to print
@@ -743,16 +751,26 @@ const Reports = () => {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <h1 className="text-3xl font-bold text-gray-900">Reports</h1>
-        <Button onClick={() => fetchAllAppointments()} className="bg-blue-600 hover:bg-blue-700">
+      {/* Header */}
+      <div className="flex justify-between items-start">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900">Reports & Analytics</h1>
+          <p className="text-sm text-gray-600 mt-1">View appointment statistics and generate printable reports</p>
+        </div>
+        <Button 
+          onClick={() => fetchAllAppointments()} 
+          variant="outline"
+          className="flex items-center gap-2"
+          disabled={loading}
+        >
+          <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
           Refresh
         </Button>
       </div>
 
-      {/* Analytics */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200">
+      {/* Analytics Summary */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200 hover:shadow-md transition-shadow">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium text-gray-700">
               Total Appointments
@@ -764,12 +782,12 @@ const Reports = () => {
               {analytics.total.toLocaleString()}
             </div>
             <p className="text-xs text-gray-600 mt-1">
-              All time appointments
+              {selectedDoctors.length === 0 ? 'All doctors' : `${selectedDoctors.length} doctor(s) selected`}
             </p>
           </CardContent>
         </Card>
 
-        <Card className="bg-gradient-to-br from-green-50 to-green-100 border-green-200">
+        <Card className="bg-gradient-to-br from-green-50 to-green-100 border-green-200 hover:shadow-md transition-shadow">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium text-gray-700">
               Walk-In Appointments
@@ -781,12 +799,12 @@ const Reports = () => {
               {analytics.walkIns.toLocaleString()}
             </div>
             <p className="text-xs text-gray-600 mt-1">
-              {analytics.walkInPercentage}% of total • Manually added by staff
+              {analytics.walkInPercentage}% of total
             </p>
           </CardContent>
         </Card>
 
-        <Card className="bg-gradient-to-br from-purple-50 to-purple-100 border-purple-200">
+        <Card className="bg-gradient-to-br from-purple-50 to-purple-100 border-purple-200 hover:shadow-md transition-shadow">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium text-gray-700">
               Online Appointments
@@ -798,113 +816,146 @@ const Reports = () => {
               {analytics.online.toLocaleString()}
             </div>
             <p className="text-xs text-gray-600 mt-1">
-              {analytics.onlinePercentage}% of total • Booked through patient portal
+              {analytics.onlinePercentage}% of total
             </p>
           </CardContent>
         </Card>
       </div>
 
-      {/* Doctor Filter */}
+      {/* Filters and Print Options - Combined Card */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Filter className="h-5 w-5" />
-            Filter by Doctor
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="flex flex-wrap gap-3">
-            <Button
-              variant={selectedDoctors.length === 0 ? "default" : "outline"}
-              size="sm"
-              onClick={() => setSelectedDoctors([])}
-              className={selectedDoctors.length === 0 ? "bg-blue-600 hover:bg-blue-700 text-white" : ""}
-            >
-              Both Doctors
-            </Button>
-            {dynamicDoctorNames.map((doctor) => {
-              // Check if this doctor is selected (using flexible matching)
-              const isSelected = selectedDoctors.length > 0 && selectedDoctors.some(selectedDoc => {
-                return selectedDoc === doctor || 
-                       mapDoctorNameToSettings(selectedDoc) === doctor ||
-                       mapDoctorNameToSettings(doctor) === selectedDoc;
-              });
-              
-              return (
-                <Button
-                  key={doctor}
-                  variant={isSelected ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => {
-                    // If "Both Doctors" is selected (empty array), toggle to just this doctor
-                    if (selectedDoctors.length === 0) {
-                      setSelectedDoctors([doctor]);
-                    } else if (isSelected) {
-                      // If clicking selected doctor, remove it
-                      const newSelected = selectedDoctors.filter(d => {
-                        const mappedD = mapDoctorNameToSettings(d);
-                        const mappedDoctor = mapDoctorNameToSettings(doctor);
-                        return mappedD !== mappedDoctor && d !== doctor;
-                      });
-                      // If removing last one, set to empty (show all)
-                      setSelectedDoctors(newSelected.length === 0 ? [] : newSelected);
-                    } else {
-                      // If clicking unselected, add it
-                      setSelectedDoctors([...selectedDoctors, doctor]);
-                    }
-                  }}
-                  className={isSelected ? "bg-blue-600 hover:bg-blue-700 text-white" : ""}
-                >
-                  {doctor.includes("Maria") || doctor.toLowerCase().includes("ob") ? "OB-GYNE" : "Pediatrician"}
-                </Button>
-              );
-            })}
+          <div className="flex items-center justify-between">
+            <CardTitle className="flex items-center gap-2">
+              <FileText className="h-5 w-5" />
+              Generate Reports
+            </CardTitle>
+            {!loading && (
+              <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
+                {allAppointments.length.toLocaleString()} appointments loaded
+              </span>
+            )}
           </div>
-          <p className="text-sm text-gray-600 mt-3">
-            Selected: {selectedDoctors.length === 0 ? "Both Doctors" : selectedDoctors.join(", ")}
-          </p>
-        </CardContent>
-      </Card>
-
-      {/* Print Options */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Print Appointments</CardTitle>
         </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            <Button 
-              variant="outline"
-              onClick={() => handlePrint("day")}
-              className="flex items-center justify-center gap-2 h-20 text-lg"
-            >
-              <Printer className="h-5 w-5" />
-              Daily
-            </Button>
-            <Button 
-              variant="outline"
-              onClick={() => handlePrint("week")}
-              className="flex items-center justify-center gap-2 h-20 text-lg"
-            >
-              <Printer className="h-5 w-5" />
-              Weekly
-            </Button>
-            <Button 
-              variant="outline"
-              onClick={() => handlePrint("month")}
-              className="flex items-center justify-center gap-2 h-20 text-lg"
-            >
-              <Printer className="h-5 w-5" />
-              Monthly
-            </Button>
-            <Button 
-              variant="outline"
-              onClick={() => handlePrint("no-show")}
-              className="flex items-center justify-center gap-2 h-20 text-lg"
-            >
-              <Printer className="h-5 w-5" />
-              All No Shows
-            </Button>
+        <CardContent className="space-y-6">
+          {/* Doctor Filter */}
+          <div>
+            <label className="text-sm font-medium text-gray-700 mb-3 block flex items-center gap-2">
+              <Filter className="h-4 w-4" />
+              Filter by Doctor
+            </label>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant={selectedDoctors.length === 0 ? "default" : "outline"}
+                size="sm"
+                onClick={() => setSelectedDoctors([])}
+                className={selectedDoctors.length === 0 ? "bg-blue-600 hover:bg-blue-700 text-white" : ""}
+              >
+                Both Doctors
+              </Button>
+              {dynamicDoctorNames.map((doctor) => {
+                const isSelected = selectedDoctors.length > 0 && selectedDoctors.some(selectedDoc => {
+                  return selectedDoc === doctor || 
+                         mapDoctorNameToSettings(selectedDoc) === doctor ||
+                         mapDoctorNameToSettings(doctor) === selectedDoc;
+                });
+                
+                return (
+                  <Button
+                    key={doctor}
+                    variant={isSelected ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => {
+                      if (selectedDoctors.length === 0) {
+                        setSelectedDoctors([doctor]);
+                      } else if (isSelected) {
+                        const newSelected = selectedDoctors.filter(d => {
+                          const mappedD = mapDoctorNameToSettings(d);
+                          const mappedDoctor = mapDoctorNameToSettings(doctor);
+                          return mappedD !== mappedDoctor && d !== doctor;
+                        });
+                        setSelectedDoctors(newSelected.length === 0 ? [] : newSelected);
+                      } else {
+                        setSelectedDoctors([...selectedDoctors, doctor]);
+                      }
+                    }}
+                    className={isSelected ? "bg-blue-600 hover:bg-blue-700 text-white" : ""}
+                  >
+                    {doctor.includes("Maria") || doctor.toLowerCase().includes("ob") ? "OB-GYNE" : "Pediatrician"}
+                  </Button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="border-t pt-4">
+            {/* Time-based Reports */}
+            <div className="mb-4">
+              <label className="text-sm font-medium text-gray-700 mb-3 block flex items-center gap-2">
+                <Calendar className="h-4 w-4" />
+                Time-Based Reports
+              </label>
+              <div className="grid grid-cols-3 gap-3">
+                <Button 
+                  variant="outline"
+                  onClick={() => handlePrint("day")}
+                  className="flex items-center justify-center gap-2 h-14 hover:bg-blue-50 hover:border-blue-300"
+                >
+                  <Printer className="h-4 w-4" />
+                  <span>Today</span>
+                </Button>
+                <Button 
+                  variant="outline"
+                  onClick={() => handlePrint("week")}
+                  className="flex items-center justify-center gap-2 h-14 hover:bg-blue-50 hover:border-blue-300"
+                >
+                  <Printer className="h-4 w-4" />
+                  <span>This Week</span>
+                </Button>
+                <Button 
+                  variant="outline"
+                  onClick={() => handlePrint("month")}
+                  className="flex items-center justify-center gap-2 h-14 hover:bg-blue-50 hover:border-blue-300"
+                >
+                  <Printer className="h-4 w-4" />
+                  <span>This Month</span>
+                </Button>
+              </div>
+            </div>
+
+            {/* Status-based Reports */}
+            <div>
+              <label className="text-sm font-medium text-gray-700 mb-3 block flex items-center gap-2">
+                <TrendingUp className="h-4 w-4" />
+                Status-Based Reports
+              </label>
+              <div className="grid grid-cols-3 gap-3">
+                <Button 
+                  variant="outline"
+                  onClick={() => handlePrint("no-show")}
+                  className="flex items-center justify-center gap-2 h-14 border-orange-200 hover:bg-orange-50 hover:border-orange-300"
+                >
+                  <Printer className="h-4 w-4" />
+                  <span>No-Shows</span>
+                </Button>
+                <Button 
+                  variant="outline"
+                  onClick={() => handlePrint("cancelled")}
+                  className="flex items-center justify-center gap-2 h-14 border-red-200 hover:bg-red-50 hover:border-red-300"
+                >
+                  <Printer className="h-4 w-4" />
+                  <span>Cancelled</span>
+                </Button>
+                <Button 
+                  variant="outline"
+                  onClick={() => handlePrint("completed")}
+                  className="flex items-center justify-center gap-2 h-14 border-green-200 hover:bg-green-50 hover:border-green-300"
+                >
+                  <Printer className="h-4 w-4" />
+                  <span>Completed</span>
+                </Button>
+              </div>
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -912,22 +963,21 @@ const Reports = () => {
       {loading && (
         <div className="flex justify-center items-center py-12">
           <LoadingSpinner />
+          <span className="ml-3 text-gray-600">Loading appointments...</span>
         </div>
       )}
 
-      {/* Data Status */}
-      {!loading && (
+      {!loading && allAppointments.length === 0 && (
         <Card>
           <CardContent className="pt-6">
-            <div className="text-center">
-              <p className="text-sm text-gray-600">
-                <strong>Total Appointments Loaded:</strong> {allAppointments.length}
-              </p>
-              {allAppointments.length === 0 && (
-                <p className="text-sm text-red-600 mt-2">
-                  No appointments found. Click Refresh to reload data.
-                </p>
-              )}
+            <div className="text-center py-8">
+              <FileText className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+              <p className="text-gray-600 mb-2">No appointments found</p>
+              <p className="text-sm text-gray-500 mb-4">Click Refresh to reload appointments</p>
+              <Button onClick={() => fetchAllAppointments()} className="bg-blue-600 hover:bg-blue-700">
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Refresh Data
+              </Button>
             </div>
           </CardContent>
         </Card>

@@ -144,7 +144,7 @@ export default function Patients() {
         params.type = selectedType;
       }
       const response = await patientsAPI.getAll(params);
-      const data = response.data.data;
+      const data = extractData(response);
       setPatients(data.patients || []);
       setTotalPages(data.pagination?.pages || 1);
       setHasMore(currentPage < (data.pagination?.pages || 1));
@@ -210,7 +210,7 @@ export default function Patients() {
       }
 
       const response = await patientsAPI.search(params);
-      const data = response.data;
+      const data = extractData(response);
 
       setPatients(data.patients || []);
       setTotalPages(data.pagination?.pages || 1);

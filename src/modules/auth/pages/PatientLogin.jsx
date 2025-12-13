@@ -1,4 +1,4 @@
-import { Card, CardContent, CardDescription, CardHeader, CardTitle, Button, Input, LoadingSpinner, usePatientAuth } from '../../shared';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, Button, Input, LoadingSpinner, usePatientAuth, Checkbox } from '../../shared';
 import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Heart, ArrowLeft, Eye, EyeOff } from 'lucide-react';
@@ -7,6 +7,7 @@ export default function PatientLogin() {
   const navigate = useNavigate();
   const { login, patient, loading } = usePatientAuth();
   const [showPassword, setShowPassword] = useState(false);
+  const [rememberMe, setRememberMe] = useState(false);
   const [formData, setFormData] = useState({
     email: '',
     password: ''
@@ -19,6 +20,21 @@ export default function PatientLogin() {
       navigate('/patient/dashboard');
     }
   }, [patient, loading, navigate]);
+
+  // Load saved credentials on mount
+  useEffect(() => {
+    const savedEmail = localStorage.getItem('patient_remembered_email');
+    const savedPassword = localStorage.getItem('patient_remembered_password');
+    const rememberMeChecked = localStorage.getItem('patient_remember_me') === 'true';
+    
+    if (rememberMeChecked && savedEmail && savedPassword) {
+      setFormData({
+        email: savedEmail,
+        password: savedPassword
+      });
+      setRememberMe(true);
+    }
+  }, []);
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -67,6 +83,18 @@ export default function PatientLogin() {
     const result = await login(formData);
     
     if (result.success) {
+      // Save credentials if remember me is checked
+      if (rememberMe) {
+        localStorage.setItem('patient_remembered_email', formData.email);
+        localStorage.setItem('patient_remembered_password', formData.password);
+        localStorage.setItem('patient_remember_me', 'true');
+      } else {
+        // Clear saved credentials if remember me is unchecked
+        localStorage.removeItem('patient_remembered_email');
+        localStorage.removeItem('patient_remembered_password');
+        localStorage.removeItem('patient_remember_me');
+      }
+      
       navigate('/patient/dashboard');
     }
   };
@@ -139,6 +167,21 @@ export default function PatientLogin() {
                 {errors.password && (
                   <p className="text-red-500 text-sm mt-1">{errors.password}</p>
                 )}
+              </div>
+
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="remember-me"
+                  checked={rememberMe}
+                  onCheckedChange={(checked) => setRememberMe(checked)}
+                  disabled={loading}
+                />
+                <label
+                  htmlFor="remember-me"
+                  className="text-sm font-medium text-charcoal cursor-pointer select-none"
+                >
+                  Remember password
+                </label>
               </div>
 
               <Button 

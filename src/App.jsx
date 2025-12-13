@@ -38,7 +38,13 @@ import { Settings } from "./modules/settings";
 // Inner component that can use hooks
 function AppRoutes() {
   const location = useLocation();
-  const isPatientRoute = location.pathname.startsWith('/patient');
+  // More specific check: match /patient routes but not /patients (admin route)
+  // Patient routes: /patient, /patient/login, /patient/register, etc.
+  // Admin routes: /patients, /patients/:id
+  // Check for exact match or path starting with /patient/ (with trailing slash)
+  // This ensures /patients doesn't match since it doesn't have the trailing slash
+  const isPatientRoute = location.pathname === '/patient' || 
+                         location.pathname.startsWith('/patient/');
   
   // Always call useAuth (hooks must be called unconditionally)
   // But we'll ignore it for patient routes to prevent interference

@@ -1,6 +1,6 @@
-import { useState } from 'react';
-import { useAuth, Button, Input, Card, CardContent, CardDescription, CardHeader, CardTitle, LoadingSpinner } from '../../shared';
-import { Heart, Stethoscope, Baby } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { useAuth, Button, Input, Card, CardContent, CardDescription, CardHeader, CardTitle, LoadingSpinner, Checkbox } from '../../shared';
+import { Heart, Stethoscope, Baby, Eye, EyeOff } from 'lucide-react';
 
 export default function LoginPage() {
   const [credentials, setCredentials] = useState({
@@ -8,8 +8,25 @@ export default function LoginPage() {
     password: ''
   });
   const [isLoading, setIsLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [rememberMe, setRememberMe] = useState(false);
   
   const { login, error } = useAuth();
+
+  // Load saved credentials on mount
+  useEffect(() => {
+    const savedUsername = localStorage.getItem('admin_remembered_username');
+    const savedPassword = localStorage.getItem('admin_remembered_password');
+    const rememberMeChecked = localStorage.getItem('admin_remember_me') === 'true';
+    
+    if (rememberMeChecked && savedUsername && savedPassword) {
+      setCredentials({
+        username: savedUsername,
+        password: savedPassword
+      });
+      setRememberMe(true);
+    }
+  }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -17,6 +34,18 @@ export default function LoginPage() {
     
     try {
       await login(credentials);
+      
+      // Save credentials if remember me is checked
+      if (rememberMe) {
+        localStorage.setItem('admin_remembered_username', credentials.username);
+        localStorage.setItem('admin_remembered_password', credentials.password);
+        localStorage.setItem('admin_remember_me', 'true');
+      } else {
+        // Clear saved credentials if remember me is unchecked
+        localStorage.removeItem('admin_remembered_username');
+        localStorage.removeItem('admin_remembered_password');
+        localStorage.removeItem('admin_remember_me');
+      }
     } finally {
       setIsLoading(false);
     }
@@ -84,16 +113,26 @@ export default function LoginPage() {
                 <label htmlFor="password" className="text-sm font-medium text-gray-700">
                   Password
                 </label>
-                <Input
-                  id="password"
-                  name="password"
-                  type="password"
-                  placeholder="Enter your password"
-                  value={credentials.password}
-                  onChange={handleChange}
-                  required
-                  disabled={isLoading}
-                />
+                <div className="relative">
+                  <Input
+                    id="password"
+                    name="password"
+                    type={showPassword ? 'text' : 'password'}
+                    placeholder="Enter your password"
+                    value={credentials.password}
+                    onChange={handleChange}
+                    required
+                    disabled={isLoading}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                    disabled={isLoading}
+                  >
+                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
               </div>
 
               {error && (
@@ -101,6 +140,21 @@ export default function LoginPage() {
                   <p className="text-sm text-red-800">{error}</p>
                 </div>
               )}
+
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="remember-me"
+                  checked={rememberMe}
+                  onCheckedChange={(checked) => setRememberMe(checked)}
+                  disabled={isLoading}
+                />
+                <label
+                  htmlFor="remember-me"
+                  className="text-sm font-medium text-gray-700 cursor-pointer select-none"
+                >
+                  Remember password
+                </label>
+              </div>
 
               <Button
                 type="submit"
