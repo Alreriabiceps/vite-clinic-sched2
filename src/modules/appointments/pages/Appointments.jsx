@@ -453,7 +453,12 @@ export default function Appointments() {
   ];
 
   const getDoctorType = (doctorName) => {
-    if (doctorName.includes("Maria")) return "ob-gyne";
+    if (clinicSettings) {
+      if (doctorName === clinicSettings.obgyneDoctor?.name) return "ob-gyne";
+      if (doctorName === clinicSettings.pediatrician?.name) return "pediatric";
+    }
+    // Fallback to heuristic
+    if (doctorName && (doctorName.includes("Maria") || doctorName.includes("Manaloto"))) return "ob-gyne";
     return "pediatric";
   };
 
@@ -1598,6 +1603,51 @@ export default function Appointments() {
     console.log("Reschedule modal state should be true now");
   };
 
+  const handleApproveReschedule = async (appointment) => {
+    if (!appointment.rescheduleRequest) return;
+    
+    try {
+      // Use the existing reschedule endpoint which handles the logic
+      // We pass the preferred date and time from the request
+      await appointmentsAPI.reschedule(appointment._id, {
+        newDate: appointment.rescheduleRequest.preferredDate,
+        newTime: appointment.rescheduleRequest.preferredTime,
+        reason: "Reschedule request approved by admin"
+      });
+      
+      toast.success("Reschedule request approved");
+      fetchAppointments();
+    } catch (error) {
+      console.error("Error approving reschedule:", error);
+      toast.error(handleAPIError(error));
+    }
+  };
+
+  const handleRejectReschedule = async (appointment) => {
+    if (!confirm("Are you sure you want to reject this reschedule request? The appointment will remain at its original time.")) {
+      return;
+    }
+
+    try {
+      // To reject, we simply update the status back to 'confirmed' (or 'scheduled')
+      // and optionally clear the request or mark it as rejected in the backend
+      // For now, let's assume updating status to 'confirmed' is sufficient to "reject" the pending state
+      // Ideally we should have a specific endpoint for rejection to record the rejection reason
+      
+      // Let's use updateStatus to revert to confirmed
+      await appointmentsAPI.updateStatus(appointment._id, { 
+        status: 'confirmed',
+        // We might want to add a note or clear the request in a real implementation
+      });
+      
+      toast.success("Reschedule request rejected");
+      fetchAppointments();
+    } catch (error) {
+      console.error("Error rejecting reschedule:", error);
+      toast.error(handleAPIError(error));
+    }
+  };
+
   // Get available dates for a doctor based on their schedule
   const getAvailableDatesForDoctor = (doctorName, startDate, endDate) => {
     const schedules = {
@@ -1940,10 +1990,19 @@ export default function Appointments() {
     const { name, value } = e.target;
     setNewAppointment((prev) => {
       const updated = { ...prev, [name]: value };
+      
       // Auto-calculate end time when appointment time changes
       if (name === "appointmentTime" && value) {
         updated.endTime = add30Minutes(value);
       }
+      
+      // When doctor changes, reset service type to the first available option for that doctor
+      if (name === "doctorName") {
+        const newDoctorType = getDoctorType(value);
+        const newServiceOptions = getServiceOptions(newDoctorType);
+        updated.serviceType = newServiceOptions[0] || "";
+      }
+      
       return updated;
     });
   };
@@ -2072,30 +2131,7 @@ export default function Appointments() {
           </p>
         </div>
         <div className="flex gap-2">
-          <Button
-            variant="outline"
-            className="border-soft-olive-300 text-charcoal hover:bg-soft-olive-50 font-medium px-4 py-2"
-            onClick={() => handlePrint("day")}
-          >
-            <Printer className="h-4 w-4 mr-2" />
-            Print Today
-          </Button>
-          <Button
-            variant="outline"
-            className="border-soft-olive-300 text-charcoal hover:bg-soft-olive-50 font-medium px-4 py-2"
-            onClick={() => handlePrint("week")}
-          >
-            <Printer className="h-4 w-4 mr-2" />
-            Print Week
-          </Button>
-          <Button
-            variant="outline"
-            className="border-soft-olive-300 text-charcoal hover:bg-soft-olive-50 font-medium px-4 py-2"
-            onClick={() => handlePrint("month")}
-          >
-            <Printer className="h-4 w-4 mr-2" />
-            Print Month
-          </Button>
+
           <Button
             className="bg-warm-pink hover:bg-warm-pink-600 text-white font-medium px-4 py-2 shadow-md hover:shadow-lg transition-all duration-200"
             onClick={() => setShowNewAppointmentModal(true)}
@@ -3162,6 +3198,24 @@ export default function Appointments() {
                                     </Button>
                                   </>
                                 )}
+                              {a.status === "reschedule_pending" && (
+                                <>
+                                  <Button
+                                    size="sm"
+                                    className="h-7 px-2 bg-green-600 hover:bg-green-700 text-white"
+                                    onClick={() => handleApproveReschedule(a)}
+                                  >
+                                    Approve
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    className="h-7 px-2 bg-red-600 hover:bg-red-700 text-white"
+                                    onClick={() => handleRejectReschedule(a)}
+                                  >
+                                    Reject
+                                  </Button>
+                                </>
+                              )}
                               {a.status === "scheduled" && (
                                 <Button
                                   size="sm"
@@ -3171,7 +3225,7 @@ export default function Appointments() {
                                   Confirm
                                 </Button>
                               )}
-                              {a.status === "confirmed" && (
+                              {(a.status === "confirmed" || a.status === "rescheduled") && (
                                 <>
                                   <Button
                                     size="sm"
@@ -3202,7 +3256,8 @@ export default function Appointments() {
                                 </>
                               )}
                               {(a.status === "scheduled" ||
-                                a.status === "confirmed") && (
+                                a.status === "confirmed" ||
+                                a.status === "rescheduled") && (
                                   <>
                                     <button
                                       type="button"
@@ -4219,10 +4274,7 @@ export default function Appointments() {
               <select
                 name="doctorName"
                 value={newAppointment.doctorName}
-                onChange={(e) => {
-                  handleNewAppointmentChange(e);
-                  setNewAppointment((prev) => ({ ...prev, serviceType: "" }));
-                }}
+                onChange={handleNewAppointmentChange}
                 className="w-full p-1.5 text-sm border border-gray-300 rounded-md"
                 required
               >
@@ -4259,6 +4311,7 @@ export default function Appointments() {
                   className="w-full p-1.5 text-sm border border-gray-300 rounded-md"
                   required
                 >
+                  <option value="">Select time</option>
                   {timeSlots.map((slot) => (
                     <option key={slot} value={slot}>
                       {slot}

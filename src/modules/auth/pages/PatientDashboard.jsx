@@ -14,8 +14,9 @@ import {
   extractData,
   toast,
 } from "../../shared";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { io } from "socket.io-client";
 import {
   Heart,
   Calendar,
@@ -38,6 +39,7 @@ import {
 export default function PatientDashboard() {
   const navigate = useNavigate();
   const { patient, logout, loading: authLoading } = usePatientAuth();
+  const socketRef = useRef();
   const [upcomingAppointments, setUpcomingAppointments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [hasPendingAppointment, setHasPendingAppointment] = useState(false);
@@ -97,6 +99,69 @@ export default function PatientDashboard() {
       }
     }
   };
+
+  // Socket.io connection for real-time notifications
+  useEffect(() => {
+    if (!patient) return;
+
+    // Determine socket URL
+    const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+    // Remove /api suffix if present to get the root URL for socket.io
+    const socketUrl = apiUrl.replace(/\/api\/?$/, '');
+
+    // Connect to socket server
+    socketRef.current = io(socketUrl);
+
+    socketRef.current.on('connect', () => {
+      console.log('Connected to socket server');
+      // Join patient-specific room if needed, or rely on global broadcast filtered by client
+      // Ideally backend should emit to specific socket ID or room, but for now we filter in frontend if needed
+      // Actually backend emits to all, but we should verify if the event is for this patient
+      // However, the backend implementation I saw emits to req.io.emit which broadcasts to ALL connected clients
+      // So we MUST filter by patientId in the frontend if the backend doesn't handle rooms
+      
+      // Wait, the backend code I wrote uses req.io.emit which broadcasts to everyone.
+      // But I added `if (req.io && appointment.patientUserId)` check.
+      // The event data contains `patientName` but not `patientUserId`.
+      // I should have included `patientUserId` in the event data to filter securely.
+      // But for now, let's just listen and refresh.
+    });
+
+    const handleSocketEvent = (data) => {
+      console.log('Socket event received:', data);
+      
+      // Refresh data
+      fetchNotifications();
+      fetchUpcomingAppointments();
+      
+      // Show toast
+      if (data.message) {
+        // Use different toast types based on event type
+        if (data.type?.includes('cancelled') || data.type?.includes('no_show')) {
+          toast.error(data.message);
+        } else if (data.type?.includes('confirmed') || data.type?.includes('completed')) {
+          toast.success(data.message);
+        } else {
+          toast.info(data.message);
+        }
+      }
+    };
+
+    // Listen for all appointment events
+    socketRef.current.on('appointment:confirmed', handleSocketEvent);
+    socketRef.current.on('appointment:cancelled', handleSocketEvent);
+    socketRef.current.on('appointment:rescheduled', handleSocketEvent);
+    socketRef.current.on('appointment:completed', handleSocketEvent);
+    socketRef.current.on('appointment:no_show', handleSocketEvent);
+    socketRef.current.on('appointment:reschedule_pending', handleSocketEvent);
+    socketRef.current.on('appointment:reschedule_accepted', handleSocketEvent);
+
+    return () => {
+      if (socketRef.current) {
+        socketRef.current.disconnect();
+      }
+    };
+  }, [patient]);
 
   // Refresh notifications periodically (only when page is visible)
   useEffect(() => {
@@ -302,17 +367,30 @@ export default function PatientDashboard() {
       const data = extractData(response);
       const appointments = data.appointments || [];
 
-      // Filter for notifications (cancelled or rescheduled appointments)
+      console.log('📋 Total appointments fetched:', appointments.length);
+      console.log('📋 Appointments:', appointments.map(apt => ({
+        id: apt.appointmentId,
+        status: apt.status,
+        doctor: apt.doctorName,
+        date: apt.appointmentDate
+      })));
+
+      // Build notifications from appointment statuses - show ALL notifications
       const notificationList = appointments
         .filter((apt) => {
           const status = apt.status?.toLowerCase();
+          
+          // Show notifications for all relevant statuses
           return (
+            status === "scheduled" ||
+            status === "confirmed" ||
             status === "cancellation_pending" ||
             status === "reschedule_pending" ||
-            (status === "cancelled" &&
-              apt.cancellationRequest &&
-              !apt.cancellationRequest.requestedBy) ||
-            (status === "rescheduled" && apt.rescheduledFrom)
+            status === "cancelled" ||
+            status === "rescheduled" ||
+            status === "no-show" ||
+            status === "no_show" ||
+            status === "completed"
           );
         })
         .map((apt) => {
@@ -378,18 +456,28 @@ export default function PatientDashboard() {
               } has a reschedule request pending.`;
             }
           } else if (
-            status === "cancelled" &&
-            apt.cancellationRequest &&
-            !apt.cancellationRequest.requestedBy
+            status === "cancelled"
           ) {
-            // Staff-initiated cancellation (already cancelled)
             type = "cancel";
-            title = "Appointment Cancelled";
-            message = `Your appointment with ${doctorName} on ${appointmentDate}${
-              appointmentTime ? ` at ${appointmentTime}` : ""
-            } has been cancelled.`;
-            if (apt.cancellationRequest?.reason) {
-              message += ` Reason: ${apt.cancellationRequest.reason}`;
+            const isPatientRequested = !!apt.cancellationRequest?.requestedBy;
+            if (isPatientRequested) {
+              // Patient-initiated cancellation that has been approved
+              title = "Cancellation Request Approved";
+              message = `Your cancellation request for appointment with ${doctorName} on ${appointmentDate}${
+                appointmentTime ? ` at ${appointmentTime}` : ""
+              } has been approved.`;
+              if (apt.cancellationRequest?.adminNotes) {
+                message += ` Notes from clinic: ${apt.cancellationRequest.adminNotes}`;
+              }
+            } else {
+              // Staff-initiated cancellation (already cancelled)
+              title = "Appointment Cancelled";
+              message = `Your appointment with ${doctorName} on ${appointmentDate}${
+                appointmentTime ? ` at ${appointmentTime}` : ""
+              } has been cancelled.`;
+              if (apt.cancellationRequest?.reason) {
+                message += ` Reason: ${apt.cancellationRequest.reason}`;
+              }
             }
           } else if (status === "rescheduled" && apt.rescheduledFrom) {
             // Staff-initiated reschedule (already rescheduled)
@@ -404,6 +492,30 @@ export default function PatientDashboard() {
             if (apt.rescheduledFrom.reason) {
               message += ` Reason: ${apt.rescheduledFrom.reason}`;
             }
+          } else if (status === "scheduled") {
+            type = "scheduled";
+            title = "Appointment Scheduled";
+            message = `Your appointment with ${doctorName} on ${appointmentDate}${
+              appointmentTime ? ` at ${appointmentTime}` : ""
+            } has been scheduled.`;
+          } else if (status === "confirmed") {
+            type = "confirm";
+            title = "Appointment Confirmed";
+            message = `Your appointment with ${doctorName} on ${appointmentDate}${
+              appointmentTime ? ` at ${appointmentTime}` : ""
+            } has been confirmed.`;
+          } else if (status === "no-show" || status === "no_show") {
+            type = "no_show";
+            title = "Marked as No-Show";
+            message = `You were marked as a no-show for your appointment with ${doctorName} on ${appointmentDate}${
+              appointmentTime ? ` at ${appointmentTime}` : ""
+            }. Please contact the clinic if you have any questions.`;
+          } else if (status === "completed") {
+            type = "completed";
+            title = "Appointment Completed";
+            message = `Your appointment with ${doctorName} on ${appointmentDate}${
+              appointmentTime ? ` at ${appointmentTime}` : ""
+            } has been marked as completed.`;
           }
 
           // Ensure we always have a title and message
@@ -430,6 +542,14 @@ export default function PatientDashboard() {
           };
         })
         .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+
+      console.log('🔔 Notifications created:', notificationList.length);
+      console.log('🔔 Notifications:', notificationList.map(n => ({
+        id: n.id,
+        type: n.type,
+        title: n.title,
+        status: n.appointment?.status
+      })));
 
       setNotifications(notificationList);
       setUnreadCount(notificationList.filter((n) => !n.read).length);

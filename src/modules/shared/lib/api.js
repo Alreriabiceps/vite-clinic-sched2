@@ -10,18 +10,98 @@ const API_BASE_URL = import.meta.env.VITE_API_URL ||
 const normalizedURL = API_BASE_URL.endsWith('/api') ? API_BASE_URL : `${API_BASE_URL}/api`;
 const FINAL_API_URL = normalizedURL;
 
+// ============================================================================
+// AGGRESSIVE RATE LIMITING - PREVENTS 429 ERRORS
+// ============================================================================
+
 // Request throttling: Track pending requests to prevent duplicates
 const pendingRequests = new Map();
-const REQUEST_COOLDOWN = 1000; // 1 second cooldown between identical requests
+const REQUEST_COOLDOWN = 3000; // 3 second cooldown between identical requests
 
 // Rate limiting: Track request timing to avoid 429 errors
 const requestTimestamps = [];
-const MAX_REQUESTS_PER_SECOND = 30; // Maximum requests per second
+const MAX_REQUESTS_PER_SECOND = 10; // Relaxed: 10 requests per second
 const RATE_LIMIT_WINDOW = 1000; // 1 second window
+const MIN_DELAY_BETWEEN_REQUESTS = 100; // Reduced delay: 100ms between ANY requests
+
+// Request queue to manage concurrent requests - PROCESSES ONE AT A TIME
+const requestQueue = [];
+let isProcessingQueue = false;
+let lastRequestTime = 0;
+
+// Global rate limit lock - blocks ALL requests if we hit rate limit
+let isRateLimited = false;
+let rateLimitUntil = 0;
 
 // Generate a unique key for a request
 const getRequestKey = (config) => {
   return `${config.method?.toUpperCase()}_${config.url}_${JSON.stringify(config.params || {})}`;
+};
+
+// Process request queue with STRICT rate limiting - ONE REQUEST AT A TIME
+const processRequestQueue = async () => {
+  if (isProcessingQueue || requestQueue.length === 0) {
+    return;
+  }
+
+  isProcessingQueue = true;
+  
+  while (requestQueue.length > 0) {
+    // Check if we're globally rate limited
+    const now = Date.now();
+    if (isRateLimited && now < rateLimitUntil) {
+      const waitTime = rateLimitUntil - now;
+      await new Promise(resolve => setTimeout(resolve, waitTime));
+      isRateLimited = false;
+      rateLimitUntil = 0;
+    }
+
+    const { resolve, config } = requestQueue.shift();
+    
+    // Enforce minimum delay between requests
+    const timeSinceLastRequest = now - lastRequestTime;
+    if (timeSinceLastRequest < MIN_DELAY_BETWEEN_REQUESTS) {
+      const waitTime = MIN_DELAY_BETWEEN_REQUESTS - timeSinceLastRequest;
+      await new Promise(resolve => setTimeout(resolve, waitTime));
+    }
+    
+    // Check rate limit before processing
+    const currentTime = Date.now();
+    const recentTimestamps = requestTimestamps.filter(
+      timestamp => currentTime - timestamp < RATE_LIMIT_WINDOW
+    );
+    
+    // If we're at the limit, wait before processing next request
+    if (recentTimestamps.length >= MAX_REQUESTS_PER_SECOND) {
+      const oldestTimestamp = recentTimestamps[0];
+      const waitTime = RATE_LIMIT_WINDOW - (currentTime - oldestTimestamp) + 100; // Add buffer
+      if (waitTime > 0) {
+        await new Promise(resolve => setTimeout(resolve, Math.min(waitTime, 5000)));
+      }
+    }
+    
+    // Add timestamp
+    const requestTime = Date.now();
+    requestTimestamps.push(requestTime);
+    lastRequestTime = requestTime;
+    
+    // Clean old timestamps (keep only last 10 seconds)
+    const cleanedTimestamps = requestTimestamps.filter(
+      timestamp => requestTime - timestamp < 10000
+    );
+    requestTimestamps.length = 0;
+    requestTimestamps.push(...cleanedTimestamps);
+    
+    // Resolve and allow request to proceed
+    resolve(config);
+    
+    // MANDATORY delay between requests (even if queue has more)
+    if (requestQueue.length > 0) {
+      await new Promise(resolve => setTimeout(resolve, MIN_DELAY_BETWEEN_REQUESTS));
+    }
+  }
+  
+  isProcessingQueue = false;
 };
 
 // Throttle interceptor to prevent duplicate requests and rate limiting
@@ -29,52 +109,55 @@ const throttleInterceptor = async (config) => {
   const requestKey = getRequestKey(config);
   const now = Date.now();
 
-  // Rate limiting: Check if we're making too many requests too quickly
-  requestTimestamps.push(now);
-
-  // Remove timestamps older than the rate limit window
-  const recentTimestamps = requestTimestamps.filter(
-    timestamp => now - timestamp < RATE_LIMIT_WINDOW
-  );
-  requestTimestamps.length = 0;
-  requestTimestamps.push(...recentTimestamps);
-
-  // If we're at the limit, wait before proceeding
-  if (recentTimestamps.length >= MAX_REQUESTS_PER_SECOND) {
-    const oldestTimestamp = recentTimestamps[0];
-    const waitTime = RATE_LIMIT_WINDOW - (now - oldestTimestamp) + 100; // Add buffer
-    if (waitTime > 0 && waitTime < 2000) {
+  // Check global rate limit lock
+  if (isRateLimited && now < rateLimitUntil) {
+    const waitTime = rateLimitUntil - now;
+    if (waitTime > 0 && waitTime < 10000) {
       await new Promise(resolve => setTimeout(resolve, waitTime));
+      isRateLimited = false;
+      rateLimitUntil = 0;
+    } else {
+      // Too long to wait, reject immediately
+      return Promise.reject({ 
+        code: 'ERR_CANCELED', 
+        name: 'CanceledError', 
+        silent: true,
+        message: 'Rate limit active. Please wait before making more requests.'
+      });
     }
   }
 
   // Check if same request was made recently (deduplication)
   if (pendingRequests.has(requestKey)) {
     const lastRequestTime = pendingRequests.get(requestKey);
-    const timeSinceLastRequest = Date.now() - lastRequestTime;
+    const timeSinceLastRequest = now - lastRequestTime;
 
     if (timeSinceLastRequest < REQUEST_COOLDOWN) {
-      // Request is too soon, create an abort controller to cancel it
-      const controller = new AbortController();
-      controller.abort();
-      config.signal = controller.signal;
-      // Return config - axios will handle the aborted signal
-      return config;
+      // Request is too soon, cancel it
+      return Promise.reject({ 
+        code: 'ERR_CANCELED', 
+        name: 'CanceledError', 
+        silent: true 
+      });
     }
   }
 
   // Update last request time
-  pendingRequests.set(requestKey, Date.now());
+  pendingRequests.set(requestKey, now);
 
-  // Clean up old entries (older than 5 seconds)
+  // Clean up old entries (older than 30 seconds)
   const currentTime = Date.now();
   for (const [key, time] of pendingRequests.entries()) {
-    if (currentTime - time > 5000) {
+    if (currentTime - time > 30000) {
       pendingRequests.delete(key);
     }
   }
 
-  return config;
+  // Queue the request to manage rate limiting
+  return new Promise((resolve) => {
+    requestQueue.push({ resolve, config });
+    processRequestQueue();
+  });
 };
 
 // Debug logging
@@ -82,7 +165,9 @@ console.log('API Configuration:', {
   MODE: import.meta.env.MODE,
   VITE_API_URL: import.meta.env.VITE_API_URL,
   API_BASE_URL: API_BASE_URL,
-  FINAL_API_URL: FINAL_API_URL
+  FINAL_API_URL: FINAL_API_URL,
+  RATE_LIMIT: `${MAX_REQUESTS_PER_SECOND} requests/second`,
+  MIN_DELAY: `${MIN_DELAY_BETWEEN_REQUESTS}ms`
 });
 
 // Create axios instance for staff API
@@ -91,6 +176,7 @@ const api = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
+  timeout: 30000, // 30 second timeout
 });
 
 // Request interceptor for throttling (runs first)
@@ -112,14 +198,48 @@ api.interceptors.request.use(
   }
 );
 
-// Response interceptor to handle staff auth errors
+// Response interceptor to handle staff auth errors and 429 rate limiting
 api.interceptors.response.use(
-  (response) => response,
-  (error) => {
+  (response) => {
+    // Reset rate limit lock on successful response
+    isRateLimited = false;
+    rateLimitUntil = 0;
+    return response;
+  },
+  async (error) => {
     // Suppress CanceledError messages (expected from request throttling)
     if (error?.code === 'ERR_CANCELED' || error?.name === 'CanceledError') {
       // Create a silent rejection that won't trigger error handlers
       return Promise.reject({ ...error, silent: true });
+    }
+
+    // Handle 429 Too Many Requests with AGGRESSIVE retry logic
+    if (error.response?.status === 429) {
+      // Set global rate limit lock
+      const retryAfter = parseInt(error.response.headers['retry-after'] || '5', 10);
+      isRateLimited = true;
+      rateLimitUntil = Date.now() + (retryAfter * 1000);
+      
+      const retryCount = error.config.__retryCount || 0;
+      const maxRetries = 2; // Reduced retries to prevent cascading failures
+
+      if (retryCount < maxRetries) {
+        // Wait before retrying with exponential backoff
+        const waitTime = retryAfter * 1000 * Math.pow(2, retryCount);
+        await new Promise(resolve => setTimeout(resolve, Math.min(waitTime, 15000)));
+
+        // Retry the request
+        error.config.__retryCount = retryCount + 1;
+        return api.request(error.config);
+      }
+
+      // Max retries reached - keep rate limit lock active
+      console.error('Rate limit exceeded. Blocking requests for', retryAfter, 'seconds.');
+      return Promise.reject({
+        ...error,
+        message: `Too many requests. Please wait ${retryAfter} seconds before trying again.`,
+        silent: false
+      });
     }
 
     if (error.response?.status === 401) {
@@ -145,9 +265,10 @@ const patientApi = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
+  timeout: 30000, // 30 second timeout
 });
 
-// Request interceptor for throttling (runs first)
+// Request interceptor for throttling (runs first) - SHARED QUEUE
 patientApi.interceptors.request.use(throttleInterceptor, (error) => {
   return Promise.reject(error);
 });
@@ -166,14 +287,48 @@ patientApi.interceptors.request.use(
   }
 );
 
-// Response interceptor to handle patient auth errors
+// Response interceptor to handle patient auth errors and 429 rate limiting
 patientApi.interceptors.response.use(
-  (response) => response,
-  (error) => {
+  (response) => {
+    // Reset rate limit lock on successful response
+    isRateLimited = false;
+    rateLimitUntil = 0;
+    return response;
+  },
+  async (error) => {
     // Suppress CanceledError messages (expected from request throttling)
     if (error?.code === 'ERR_CANCELED' || error?.name === 'CanceledError') {
       // Create a silent rejection that won't trigger error handlers
       return Promise.reject({ ...error, silent: true });
+    }
+
+    // Handle 429 Too Many Requests with AGGRESSIVE retry logic
+    if (error.response?.status === 429) {
+      // Set global rate limit lock
+      const retryAfter = parseInt(error.response.headers['retry-after'] || '5', 10);
+      isRateLimited = true;
+      rateLimitUntil = Date.now() + (retryAfter * 1000);
+      
+      const retryCount = error.config.__retryCount || 0;
+      const maxRetries = 2; // Reduced retries to prevent cascading failures
+
+      if (retryCount < maxRetries) {
+        // Wait before retrying with exponential backoff
+        const waitTime = retryAfter * 1000 * Math.pow(2, retryCount);
+        await new Promise(resolve => setTimeout(resolve, Math.min(waitTime, 15000)));
+
+        // Retry the request
+        error.config.__retryCount = retryCount + 1;
+        return patientApi.request(error.config);
+      }
+
+      // Max retries reached - keep rate limit lock active
+      console.error('Rate limit exceeded. Blocking requests for', retryAfter, 'seconds.');
+      return Promise.reject({
+        ...error,
+        message: `Too many requests. Please wait ${retryAfter} seconds before trying again.`,
+        silent: false
+      });
     }
 
     if (error.response?.status === 401) {
@@ -311,4 +466,4 @@ export const extractData = (response) => {
   return response.data?.data || response.data;
 };
 
-export default api; 
+export default api;

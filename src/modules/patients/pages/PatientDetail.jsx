@@ -614,9 +614,18 @@ const PatientDetail = () => {
         ? patient.obGyneRecord?.consultations || []
         : patient.pediatricRecord?.consultations || [];
 
-    let immunizations = patient.patientType === "pediatric"
-      ? patient.pediatricRecord?.immunizations || []
-      : [];
+    // Get immunizations using the same logic as getImmunizations()
+    let immunizations = [];
+    if (patient.patientType === "pediatric") {
+      const records = patient.pediatricRecord?.immunizationRecords;
+      if (records && Array.isArray(records)) {
+        immunizations = records;
+      } else {
+        // Fallback: check if immunizations exists and is an array
+        const oldRecords = patient.pediatricRecord?.immunizations;
+        immunizations = Array.isArray(oldRecords) ? oldRecords : [];
+      }
+    }
 
     // Filter based on selection if not printing all
     if (!printAllRecords) {
@@ -1148,13 +1157,34 @@ const PatientDetail = () => {
             </div>
           `;
         } else {
+          // Pediatric consultation print layout
           return `
             <div class="consultation-section">
               <div class="consultation-header">Consultation #${consultations.length - idx} - ${formatDate(consultation.date)}</div>
-              <div class="consultation-item" style="margin-top: 8px;">
-                <span class="consultation-label">Notes:</span>
-                <span class="consultation-value">${consultation.notes || consultation.assessmentPlan || "N/A"}</span>
-              </div>
+              ${consultation.historyAndPE ? `
+                <div class="consultation-item" style="margin-top: 8px;">
+                  <span class="consultation-label">History &amp; Physical Examination:</span>
+                  <span class="consultation-value">${consultation.historyAndPE}</span>
+                </div>
+              ` : ""}
+              ${consultation.natureTxn ? `
+                <div class="consultation-item" style="margin-top: 8px;">
+                  <span class="consultation-label">Nature of Transaction:</span>
+                  <span class="consultation-value">${consultation.natureTxn}</span>
+                </div>
+              ` : ""}
+              ${consultation.impression ? `
+                <div class="consultation-item" style="margin-top: 8px;">
+                  <span class="consultation-label">Impression/Diagnosis:</span>
+                  <span class="consultation-value">${consultation.impression}</span>
+                </div>
+              ` : ""}
+              ${!consultation.historyAndPE && !consultation.natureTxn && !consultation.impression ? `
+                <div class="consultation-item" style="margin-top: 8px;">
+                  <span class="consultation-label">Notes:</span>
+                  <span class="consultation-value">${consultation.notes || consultation.assessmentPlan || "N/A"}</span>
+                </div>
+              ` : ""}
             </div>
           `;
         }
@@ -1773,9 +1803,18 @@ const PatientDetail = () => {
                     ? patient.obGyneRecord?.consultations || []
                     : patient.pediatricRecord?.consultations || [];
 
-                const immunizationsList = patient.patientType === "pediatric"
-                  ? patient.pediatricRecord?.immunizations || []
-                  : [];
+                // Get immunizations using the same logic as getImmunizations()
+                let immunizationsList = [];
+                if (patient.patientType === "pediatric") {
+                  const records = patient.pediatricRecord?.immunizationRecords;
+                  if (records && Array.isArray(records)) {
+                    immunizationsList = records;
+                  } else {
+                    // Fallback: check if immunizations exists and is an array
+                    const oldRecords = patient.pediatricRecord?.immunizations;
+                    immunizationsList = Array.isArray(oldRecords) ? oldRecords : [];
+                  }
+                }
 
                 return (
                   <>
@@ -1811,10 +1850,11 @@ const PatientDetail = () => {
                       </div>
                     )}
 
-                    {/* Immunizations Selection (Pediatric only) */}
-                    {isPediatric && immunizationsList.length > 0 && (
+                    {/* Immunizations Selection (Pediatric only) - Always show section even if empty */}
+                    {isPediatric && (
                       <div>
                         <h3 className="text-sm font-semibold mb-3">Immunization Records</h3>
+                        {immunizationsList.length > 0 ? (
                         <div className="space-y-2 max-h-48 overflow-y-auto border rounded p-3">
                           {immunizationsList.slice().reverse().map((immunization, idx) => {
                             const originalIdx = immunizationsList.length - 1 - idx;
@@ -1840,6 +1880,11 @@ const PatientDetail = () => {
                             );
                           })}
                         </div>
+                        ) : (
+                          <p className="text-sm text-gray-500 italic p-3 border rounded">
+                            No immunization records available
+                          </p>
+                        )}
                       </div>
                     )}
                   </>

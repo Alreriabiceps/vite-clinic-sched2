@@ -114,11 +114,12 @@ const EditObGynePatientModal = ({ patient, onClose, onSuccess }) => {
           // Auto-calculate EDD by LMP (LMP + 280 days)
           const eddDate = new Date(lmpDate);
           eddDate.setDate(eddDate.getDate() + 280);
-          newState.gynecologicHistory.eddByLmp = eddDate
-            .toISOString()
-            .split("T")[0];
+          const eddDateString = eddDate.toISOString().split("T")[0];
+          newState.gynecologicHistory.eddByLmp = eddDateString;
+          // Also set the main EDD field
+          newState.gynecologicHistory.edd = eddDate.toISOString();
 
-          console.log("Calculated EDD:", newState.gynecologicHistory.eddByLmp);
+          console.log("Calculated EDD:", eddDateString);
         }
 
         return newState;

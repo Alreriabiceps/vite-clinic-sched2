@@ -707,7 +707,8 @@ export default function PatientAppointments() {
                                   Reason
                                 </button>
                                 {(appointment.status === "scheduled" ||
-                                  appointment.status === "confirmed") && (
+                                  appointment.status === "confirmed" ||
+                                  appointment.status === "rescheduled") && (
                                   <>
                                     <button
                                       type="button"

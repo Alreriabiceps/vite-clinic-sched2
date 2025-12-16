@@ -1,6 +1,32 @@
-import { Card, CardContent, CardHeader, CardTitle, Button, LoadingSpinner, appointmentsAPI, settingsAPI, extractData } from '../../shared';
-import React, { useState, useEffect, useMemo } from 'react';
-import { Printer, Filter, Users, Globe, UserPlus, TrendingUp, Calendar, FileText, RefreshCw } from 'lucide-react';
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  Button,
+  LoadingSpinner,
+  appointmentsAPI,
+  settingsAPI,
+  extractData,
+} from "../../shared";
+import React, {
+  useState,
+  useEffect,
+  useMemo,
+  useRef,
+  useCallback,
+} from "react";
+import {
+  Printer,
+  Filter,
+  Users,
+  Globe,
+  UserPlus,
+  TrendingUp,
+  Calendar,
+  FileText,
+  RefreshCw,
+} from "lucide-react";
 
 const allDoctorNames = [
   "Dr. Maria Sarah L. Manaloto",
@@ -12,6 +38,7 @@ const Reports = () => {
   const [allAppointments, setAllAppointments] = useState([]);
   const [selectedDoctors, setSelectedDoctors] = useState([]); // Empty = show all doctors
   const [clinicSettings, setClinicSettings] = useState(null);
+  const fetchingRef = useRef(false); // Prevent multiple simultaneous fetches
 
   // Get dynamic doctor names from settings
   const getDoctorNames = () => {
@@ -81,7 +108,7 @@ const Reports = () => {
 
     // Normalize names for comparison
     const appointmentLower = appointmentDoctorName.toLowerCase().trim();
-    
+
     // Map appointment doctor name to settings doctor name
     const mappedName = mapDoctorNameToSettings(appointmentDoctorName);
     const mappedLower = mappedName ? mappedName.toLowerCase().trim() : "";
@@ -89,21 +116,23 @@ const Reports = () => {
     // Check if mapped name or original name matches any filter
     return filter.some((filterName) => {
       if (!filterName) return false;
-      
+
       const filterLower = filterName.toLowerCase().trim();
       const filterMapped = mapDoctorNameToSettings(filterName);
-      const filterMappedLower = filterMapped ? filterMapped.toLowerCase().trim() : "";
-      
+      const filterMappedLower = filterMapped
+        ? filterMapped.toLowerCase().trim()
+        : "";
+
       // Direct matches
       if (appointmentDoctorName === filterName || mappedName === filterName) {
         return true;
       }
-      
+
       // Mapped matches
       if (mappedName === filterMapped || mappedLower === filterMappedLower) {
         return true;
       }
-      
+
       // Partial matches (contains)
       if (
         appointmentLower.includes(filterLower) ||
@@ -113,35 +142,48 @@ const Reports = () => {
       ) {
         return true;
       }
-      
+
       return false;
     });
   };
 
-  const fetchAllAppointments = async () => {
+  const fetchAllAppointments = useCallback(async () => {
+    // Prevent multiple simultaneous calls
+    if (fetchingRef.current) {
+      console.log("Fetch already in progress, skipping...");
+      return;
+    }
+
+    fetchingRef.current = true;
     setLoading(true);
     try {
       // Fetch all appointments with a high limit
       const response = await appointmentsAPI.getAll({ limit: 10000 });
       const data = extractData(response);
       const appointments = data.appointments || data || [];
-      console.log('Fetched appointments for reports:', appointments.length);
+      console.log("Fetched appointments for reports:", appointments.length);
       setAllAppointments(appointments);
     } catch (error) {
       // Suppress CanceledError (expected from request throttling)
-      if (error?.code !== 'ERR_CANCELED' && error?.name !== 'CanceledError' && !error?.silent) {
-        console.error('Error fetching appointments:', error);
-        setAllAppointments([]);
+      if (
+        error?.code !== "ERR_CANCELED" &&
+        error?.name !== "CanceledError" &&
+        !error?.silent
+      ) {
+        console.error("Error fetching appointments:", error);
+        // Don't clear appointments on error, keep existing data
+        setAllAppointments((prev) => (prev.length === 0 ? [] : prev));
       }
     } finally {
       setLoading(false);
+      fetchingRef.current = false;
     }
-  };
+  }, []);
 
   useEffect(() => {
     fetchAllAppointments();
     fetchClinicSettings();
-  }, []);
+  }, [fetchAllAppointments]);
 
   const fetchClinicSettings = async () => {
     try {
@@ -150,7 +192,11 @@ const Reports = () => {
       setClinicSettings(data);
     } catch (error) {
       // Suppress CanceledError (expected from request throttling)
-      if (error?.code !== 'ERR_CANCELED' && error?.name !== 'CanceledError' && !error?.silent) {
+      if (
+        error?.code !== "ERR_CANCELED" &&
+        error?.name !== "CanceledError" &&
+        !error?.silent
+      ) {
         console.error("Error fetching clinic settings:", error);
       }
       // Fallback to localStorage if API fails
@@ -169,30 +215,35 @@ const Reports = () => {
   // Calculate analytics - filter by selected doctors
   const analytics = useMemo(() => {
     // Get filtered appointments based on selected doctors
-    const doctorsToFilter = selectedDoctors.length === 0 ? getDoctorNames() : selectedDoctors;
-    const filteredAppointments = allAppointments.filter(a => 
+    const doctorsToFilter =
+      selectedDoctors.length === 0 ? getDoctorNames() : selectedDoctors;
+    const filteredAppointments = allAppointments.filter((a) =>
       matchesDoctorFilter(a.doctorName, doctorsToFilter)
     );
-    
+
     const total = filteredAppointments.length;
-    
+
     // Walk-in appointments: booked by staff (has bookedBy or bookingSource is "staff")
-    const walkIns = filteredAppointments.filter(a => 
-      a.bookingSource === "staff" || 
-      (a.bookedBy && !a.patientUserId) ||
-      (!a.bookingSource && a.bookedBy)
+    const walkIns = filteredAppointments.filter(
+      (a) =>
+        a.bookingSource === "staff" ||
+        (a.bookedBy && !a.patientUserId) ||
+        (!a.bookingSource && a.bookedBy)
     );
-    
+
     // Online appointments: booked through patient portal (has patientUserId or bookingSource is "patient_portal")
-    const online = filteredAppointments.filter(a => 
-      a.bookingSource === "patient_portal" || 
-      (a.patientUserId && !a.bookedBy) ||
-      (a.patientUserId && a.bookingSource !== "staff")
+    const online = filteredAppointments.filter(
+      (a) =>
+        a.bookingSource === "patient_portal" ||
+        (a.patientUserId && !a.bookedBy) ||
+        (a.patientUserId && a.bookingSource !== "staff")
     );
-    
+
     // Calculate percentages
-    const walkInPercentage = total > 0 ? Math.round((walkIns.length / total) * 100) : 0;
-    const onlinePercentage = total > 0 ? Math.round((online.length / total) * 100) : 0;
+    const walkInPercentage =
+      total > 0 ? Math.round((walkIns.length / total) * 100) : 0;
+    const onlinePercentage =
+      total > 0 ? Math.round((online.length / total) * 100) : 0;
 
     return {
       total,
@@ -212,7 +263,7 @@ const Reports = () => {
     if (appointment.patient?.pediatricRecord?.nameOfChildren) {
       return appointment.patient.pediatricRecord.nameOfChildren;
     }
-    return 'Unknown Patient';
+    return "Unknown Patient";
   };
 
   const printHtml = (html) => {
@@ -225,13 +276,13 @@ const Reports = () => {
     w.print();
   };
 
-
   const buildPrintHtml = (rangeLabel, groupedByDoctor) => {
-    const clinicName = clinicSettings?.clinicName || "VM Mother and Child Clinic";
+    const clinicName =
+      clinicSettings?.clinicName || "VM Mother and Child Clinic";
     const clinicAddress = clinicSettings?.address || "";
     const clinicPhone = clinicSettings?.phone || "";
     const clinicEmail = clinicSettings?.email || "";
-    
+
     const styles = `
       <style>
         @page {
@@ -491,9 +542,21 @@ const Reports = () => {
             <div class="clinic-details">
               <h1>${clinicName}</h1>
               <div class="clinic-info">
-                ${clinicAddress ? `<span class="clinic-info-item">📍 ${clinicAddress}</span>` : ""}
-                ${clinicPhone ? `<span class="clinic-info-item">📞 ${clinicPhone}</span>` : ""}
-                ${clinicEmail ? `<span class="clinic-info-item">✉️ ${clinicEmail}</span>` : ""}
+                ${
+                  clinicAddress
+                    ? `<span class="clinic-info-item">📍 ${clinicAddress}</span>`
+                    : ""
+                }
+                ${
+                  clinicPhone
+                    ? `<span class="clinic-info-item">📞 ${clinicPhone}</span>`
+                    : ""
+                }
+                ${
+                  clinicEmail
+                    ? `<span class="clinic-info-item">✉️ ${clinicEmail}</span>`
+                    : ""
+                }
               </div>
             </div>
           </div>
@@ -508,12 +571,12 @@ const Reports = () => {
             📋 Appointments Report: ${rangeLabel}
           </div>
           <div class="footer-secondary">
-            <span>🕒 Printed on ${new Date().toLocaleDateString("en-US", { 
-              year: "numeric", 
-              month: "long", 
+            <span>🕒 Printed on ${new Date().toLocaleDateString("en-US", {
+              year: "numeric",
+              month: "long",
               day: "numeric",
               hour: "2-digit",
-              minute: "2-digit"
+              minute: "2-digit",
             })}</span>
             <span class="footer-divider">•</span>
             <span>${clinicName}</span>
@@ -526,7 +589,7 @@ const Reports = () => {
     // Helper function to format date
     const formatDateForPrint = (appointmentDate) => {
       if (!appointmentDate) return "";
-      
+
       if (appointmentDate instanceof Date) {
         const year = appointmentDate.getFullYear();
         const month = appointmentDate.getMonth();
@@ -535,17 +598,21 @@ const Reports = () => {
           weekday: "short",
           month: "short",
           day: "numeric",
-          year: "numeric"
+          year: "numeric",
         });
       } else if (typeof appointmentDate === "string") {
         const datePart = appointmentDate.split("T")[0];
         const [year, month, day] = datePart.split("-");
         if (year && month && day) {
-          return new Date(parseInt(year, 10), parseInt(month, 10) - 1, parseInt(day, 10)).toLocaleDateString("en-US", {
+          return new Date(
+            parseInt(year, 10),
+            parseInt(month, 10) - 1,
+            parseInt(day, 10)
+          ).toLocaleDateString("en-US", {
             weekday: "short",
             month: "short",
             day: "numeric",
-            year: "numeric"
+            year: "numeric",
           });
         }
       } else {
@@ -553,7 +620,7 @@ const Reports = () => {
           weekday: "short",
           month: "short",
           day: "numeric",
-          year: "numeric"
+          year: "numeric",
         });
       }
       return "";
@@ -564,7 +631,8 @@ const Reports = () => {
       if (!status) return "other";
       const s = status.toLowerCase();
       if (s === "confirmed" || s === "scheduled") return "confirmed";
-      if (s === "rescheduled" || s === "reschedule_pending") return "reschedule";
+      if (s === "rescheduled" || s === "reschedule_pending")
+        return "reschedule";
       if (s === "cancelled" || s === "cancellation_pending") return "cancelled";
       if (s === "no-show" || s === "no show") return "no-show";
       if (s === "completed") return "completed";
@@ -575,12 +643,18 @@ const Reports = () => {
     const getStatusDisplayName = (status) => {
       const normalized = normalizeStatus(status);
       switch (normalized) {
-        case "confirmed": return "Confirmed";
-        case "reschedule": return "Rescheduled";
-        case "cancelled": return "Cancelled";
-        case "no-show": return "No Show";
-        case "completed": return "Completed";
-        default: return status || "Other";
+        case "confirmed":
+          return "Confirmed";
+        case "reschedule":
+          return "Rescheduled";
+        case "cancelled":
+          return "Cancelled";
+        case "no-show":
+          return "No Show";
+        case "completed":
+          return "Completed";
+        default:
+          return status || "Other";
       }
     };
 
@@ -616,7 +690,7 @@ const Reports = () => {
           cancelled: [],
           "no-show": [],
           completed: [],
-          other: []
+          other: [],
         };
 
         rows.forEach((r) => {
@@ -626,10 +700,17 @@ const Reports = () => {
 
         // Build status sections
         const statusSections = [];
-        
+
         // Order: Confirmed, Reschedule, Cancelled, No Show, Completed, Other
-        const statusOrder = ["confirmed", "reschedule", "cancelled", "no-show", "completed", "other"];
-        
+        const statusOrder = [
+          "confirmed",
+          "reschedule",
+          "cancelled",
+          "no-show",
+          "completed",
+          "other",
+        ];
+
         statusOrder.forEach((statusKey) => {
           const statusRows = statusGroups[statusKey];
           if (statusRows.length > 0) {
@@ -713,39 +794,40 @@ const Reports = () => {
     // Determine date window
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    
+
     const startOfToday = new Date(today);
     const endOfToday = new Date(today);
     endOfToday.setHours(23, 59, 59, 999);
-    
+
     const weekStart = new Date(today);
     const dayOfWeek = today.getDay();
     weekStart.setDate(today.getDate() - dayOfWeek); // Sunday
     const weekEnd = new Date(weekStart);
     weekEnd.setDate(weekStart.getDate() + 6); // Saturday
     weekEnd.setHours(23, 59, 59, 999);
-    
+
     const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
     const monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0);
     monthEnd.setHours(23, 59, 59, 999);
 
     // Filter appointments based on mode and selected doctors
     // Use dynamic doctor names for filtering
-    const doctorsToFilter = selectedDoctors.length === 0 ? getDoctorNames() : selectedDoctors;
-    
+    const doctorsToFilter =
+      selectedDoctors.length === 0 ? getDoctorNames() : selectedDoctors;
+
     // Debug: Log filter state
-    console.log('Doctor filter state:', {
+    console.log("Doctor filter state:", {
       selectedDoctors,
       doctorsToFilter,
-      totalAppointments: allAppointments.length
+      totalAppointments: allAppointments.length,
     });
-    
+
     const base = allAppointments.filter((a) => {
       // Filter by selected doctors - use flexible matching
       if (!matchesDoctorFilter(a.doctorName, doctorsToFilter)) {
         return false;
       }
-      
+
       // Filter by status for status-based reports (no-show, cancelled, completed)
       if (mode === "no-show") {
         const status = (a.status || "").toLowerCase();
@@ -757,12 +839,12 @@ const Reports = () => {
         const status = (a.status || "").toLowerCase();
         if (status !== "completed") return false;
       }
-      
+
       // Filter by date range for date-based reports (day, week, month)
       if (mode === "day" || mode === "week" || mode === "month") {
         // Parse appointment date correctly to avoid timezone issues
         if (!a.appointmentDate) return false;
-        
+
         let appointmentDate;
         try {
           if (a.appointmentDate instanceof Date) {
@@ -773,7 +855,11 @@ const Reports = () => {
             const datePart = a.appointmentDate.split("T")[0];
             const [year, month, day] = datePart.split("-");
             if (!year || !month || !day) return false;
-            appointmentDate = new Date(parseInt(year, 10), parseInt(month, 10) - 1, parseInt(day, 10));
+            appointmentDate = new Date(
+              parseInt(year, 10),
+              parseInt(month, 10) - 1,
+              parseInt(day, 10)
+            );
             if (isNaN(appointmentDate.getTime())) return false;
           } else {
             appointmentDate = new Date(a.appointmentDate);
@@ -783,9 +869,11 @@ const Reports = () => {
         } catch (error) {
           return false;
         }
-        
+
         if (mode === "day") {
-          return appointmentDate >= startOfToday && appointmentDate <= endOfToday;
+          return (
+            appointmentDate >= startOfToday && appointmentDate <= endOfToday
+          );
         }
         if (mode === "week") {
           return appointmentDate >= weekStart && appointmentDate <= weekEnd;
@@ -794,7 +882,7 @@ const Reports = () => {
           return appointmentDate >= monthStart && appointmentDate <= monthEnd;
         }
       }
-      
+
       return true;
     });
 
@@ -825,41 +913,43 @@ const Reports = () => {
 
       // Map to normalized doctor name for consistent grouping
       const normalizedName = mapDoctorNameToSettings(r.doctorName);
-      
+
       // Use normalized name as key, but prefer settings doctor name if available
       let groupKey = normalizedName;
-      
+
       // If we have clinic settings, use the exact doctor name from settings
       if (clinicSettings) {
         const obgyneName = clinicSettings.obgyneDoctor?.name;
         const pediatricName = clinicSettings.pediatrician?.name;
-        
+
         // Check if this appointment matches OB-GYNE doctor
-        if (obgyneName && (
-          normalizedName === obgyneName ||
-          r.doctorName.includes(obgyneName) ||
-          obgyneName.includes(r.doctorName) ||
-          r.doctorName.toLowerCase().includes("maria") ||
-          r.doctorName.toLowerCase().includes("ob")
-        )) {
+        if (
+          obgyneName &&
+          (normalizedName === obgyneName ||
+            r.doctorName.includes(obgyneName) ||
+            obgyneName.includes(r.doctorName) ||
+            r.doctorName.toLowerCase().includes("maria") ||
+            r.doctorName.toLowerCase().includes("ob"))
+        ) {
           groupKey = obgyneName;
         }
         // Check if this appointment matches Pediatric doctor
-        else if (pediatricName && (
-          normalizedName === pediatricName ||
-          r.doctorName.includes(pediatricName) ||
-          pediatricName.includes(r.doctorName) ||
-          r.doctorName.toLowerCase().includes("shara") ||
-          r.doctorName.toLowerCase().includes("pediatric") ||
-          r.doctorName.toLowerCase().includes("pedia")
-        )) {
+        else if (
+          pediatricName &&
+          (normalizedName === pediatricName ||
+            r.doctorName.includes(pediatricName) ||
+            pediatricName.includes(r.doctorName) ||
+            r.doctorName.toLowerCase().includes("shara") ||
+            r.doctorName.toLowerCase().includes("pediatric") ||
+            r.doctorName.toLowerCase().includes("pedia"))
+        ) {
           groupKey = pediatricName;
         }
       }
-      
+
       acc[groupKey] = acc[groupKey] || [];
       acc[groupKey].push(r);
-      
+
       return acc;
     }, {});
 
@@ -872,12 +962,15 @@ const Reports = () => {
     else if (mode === "cancelled") label = "Cancelled Appointments";
     else if (mode === "completed") label = "Completed Appointments";
     else label = "All Appointments";
-    
+
     // Debug: Log grouping results
-    console.log('Grouped appointments:', {
+    console.log("Grouped appointments:", {
       groupedKeys: Object.keys(grouped),
       totalRows: rows.length,
-      groupedCounts: Object.entries(grouped).map(([key, value]) => ({ doctor: key, count: value.length }))
+      groupedCounts: Object.entries(grouped).map(([key, value]) => ({
+        doctor: key,
+        count: value.length,
+      })),
     });
 
     // Check if there's any data to print
@@ -890,22 +983,29 @@ const Reports = () => {
     printHtml(html);
   };
 
-
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="flex justify-between items-start">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Reports & Analytics</h1>
-          <p className="text-sm text-gray-600 mt-1">View appointment statistics and generate printable reports</p>
+          <h1 className="text-3xl font-bold text-gray-900">
+            Reports & Analytics
+          </h1>
+          <p className="text-sm text-gray-600 mt-1">
+            View appointment statistics and generate printable reports
+          </p>
         </div>
-        <Button 
-          onClick={() => fetchAllAppointments()} 
+        <Button
+          onClick={() => {
+            if (!loading && !fetchingRef.current) {
+              fetchAllAppointments();
+            }
+          }}
           variant="outline"
           className="flex items-center gap-2"
-          disabled={loading}
+          disabled={loading || fetchingRef.current}
         >
-          <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+          <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
           Refresh
         </Button>
       </div>
@@ -924,7 +1024,9 @@ const Reports = () => {
               {analytics.total.toLocaleString()}
             </div>
             <p className="text-xs text-gray-600 mt-1">
-              {selectedDoctors.length === 0 ? 'All doctors' : `${selectedDoctors.length} doctor(s) selected`}
+              {selectedDoctors.length === 0
+                ? "All doctors"
+                : `${selectedDoctors.length} doctor(s) selected`}
             </p>
           </CardContent>
         </Card>
@@ -991,27 +1093,37 @@ const Reports = () => {
                 variant={selectedDoctors.length === 0 ? "default" : "outline"}
                 size="sm"
                 onClick={() => setSelectedDoctors([])}
-                className={selectedDoctors.length === 0 ? "bg-blue-600 hover:bg-blue-700 text-white" : ""}
+                className={
+                  selectedDoctors.length === 0
+                    ? "bg-blue-600 hover:bg-blue-700 text-white"
+                    : ""
+                }
               >
                 Both Doctors
               </Button>
               {dynamicDoctorNames.map((doctor) => {
                 // Check if this doctor is selected (using flexible matching)
-                const isSelected = selectedDoctors.length > 0 && selectedDoctors.some(selectedDoc => {
-                  // Direct match
-                  if (selectedDoc === doctor) return true;
-                  
-                  // Map both to settings names and compare
-                  const mappedSelected = mapDoctorNameToSettings(selectedDoc);
-                  const mappedDoctor = mapDoctorNameToSettings(doctor);
-                  if (mappedSelected === mappedDoctor) return true;
-                  
-                  // Check if they refer to the same doctor
-                  if (mappedSelected === doctor || mappedDoctor === selectedDoc) return true;
-                  
-                  return false;
-                });
-                
+                const isSelected =
+                  selectedDoctors.length > 0 &&
+                  selectedDoctors.some((selectedDoc) => {
+                    // Direct match
+                    if (selectedDoc === doctor) return true;
+
+                    // Map both to settings names and compare
+                    const mappedSelected = mapDoctorNameToSettings(selectedDoc);
+                    const mappedDoctor = mapDoctorNameToSettings(doctor);
+                    if (mappedSelected === mappedDoctor) return true;
+
+                    // Check if they refer to the same doctor
+                    if (
+                      mappedSelected === doctor ||
+                      mappedDoctor === selectedDoc
+                    )
+                      return true;
+
+                    return false;
+                  });
+
                 return (
                   <Button
                     key={doctor}
@@ -1023,31 +1135,44 @@ const Reports = () => {
                         setSelectedDoctors([doctor]);
                       } else if (isSelected) {
                         // Deselect this doctor
-                        const newSelected = selectedDoctors.filter(d => {
+                        const newSelected = selectedDoctors.filter((d) => {
                           // Keep doctors that don't match this one
                           if (d === doctor) return false;
                           const mappedD = mapDoctorNameToSettings(d);
                           const mappedDoctor = mapDoctorNameToSettings(doctor);
                           return mappedD !== mappedDoctor;
                         });
-                        setSelectedDoctors(newSelected.length === 0 ? [] : newSelected);
+                        setSelectedDoctors(
+                          newSelected.length === 0 ? [] : newSelected
+                        );
                       } else {
                         // Add this doctor to selection
                         // Check if we already have a doctor that maps to the same one
-                        const alreadyHasSameDoctor = selectedDoctors.some(d => {
-                          const mappedD = mapDoctorNameToSettings(d);
-                          const mappedDoctor = mapDoctorNameToSettings(doctor);
-                          return mappedD === mappedDoctor;
-                        });
-                        
+                        const alreadyHasSameDoctor = selectedDoctors.some(
+                          (d) => {
+                            const mappedD = mapDoctorNameToSettings(d);
+                            const mappedDoctor =
+                              mapDoctorNameToSettings(doctor);
+                            return mappedD === mappedDoctor;
+                          }
+                        );
+
                         if (!alreadyHasSameDoctor) {
                           setSelectedDoctors([...selectedDoctors, doctor]);
                         }
                       }
                     }}
-                    className={isSelected ? "bg-blue-600 hover:bg-blue-700 text-white" : ""}
+                    className={
+                      isSelected
+                        ? "bg-blue-600 hover:bg-blue-700 text-white"
+                        : ""
+                    }
                   >
-                    {doctor.includes("Maria") || doctor.toLowerCase().includes("ob") || doctor.toLowerCase().includes("ob-gyne") ? "OB-GYNE" : "Pediatrician"}
+                    {doctor.includes("Maria") ||
+                    doctor.toLowerCase().includes("ob") ||
+                    doctor.toLowerCase().includes("ob-gyne")
+                      ? "OB-GYNE"
+                      : "Pediatrician"}
                   </Button>
                 );
               })}
@@ -1062,7 +1187,7 @@ const Reports = () => {
                 Time-Based Reports
               </label>
               <div className="grid grid-cols-3 gap-3">
-                <Button 
+                <Button
                   variant="outline"
                   onClick={() => handlePrint("day")}
                   className="flex items-center justify-center gap-2 h-14 hover:bg-blue-50 hover:border-blue-300"
@@ -1070,7 +1195,7 @@ const Reports = () => {
                   <Printer className="h-4 w-4" />
                   <span>Today</span>
                 </Button>
-                <Button 
+                <Button
                   variant="outline"
                   onClick={() => handlePrint("week")}
                   className="flex items-center justify-center gap-2 h-14 hover:bg-blue-50 hover:border-blue-300"
@@ -1078,7 +1203,7 @@ const Reports = () => {
                   <Printer className="h-4 w-4" />
                   <span>This Week</span>
                 </Button>
-                <Button 
+                <Button
                   variant="outline"
                   onClick={() => handlePrint("month")}
                   className="flex items-center justify-center gap-2 h-14 hover:bg-blue-50 hover:border-blue-300"
@@ -1096,7 +1221,7 @@ const Reports = () => {
                 Status-Based Reports
               </label>
               <div className="grid grid-cols-3 gap-3">
-                <Button 
+                <Button
                   variant="outline"
                   onClick={() => handlePrint("no-show")}
                   className="flex items-center justify-center gap-2 h-14 border-orange-200 hover:bg-orange-50 hover:border-orange-300"
@@ -1104,7 +1229,7 @@ const Reports = () => {
                   <Printer className="h-4 w-4" />
                   <span>No-Shows</span>
                 </Button>
-                <Button 
+                <Button
                   variant="outline"
                   onClick={() => handlePrint("cancelled")}
                   className="flex items-center justify-center gap-2 h-14 border-red-200 hover:bg-red-50 hover:border-red-300"
@@ -1112,7 +1237,7 @@ const Reports = () => {
                   <Printer className="h-4 w-4" />
                   <span>Cancelled</span>
                 </Button>
-                <Button 
+                <Button
                   variant="outline"
                   onClick={() => handlePrint("completed")}
                   className="flex items-center justify-center gap-2 h-14 border-green-200 hover:bg-green-50 hover:border-green-300"
@@ -1139,9 +1264,21 @@ const Reports = () => {
             <div className="text-center py-8">
               <FileText className="h-12 w-12 text-gray-400 mx-auto mb-4" />
               <p className="text-gray-600 mb-2">No appointments found</p>
-              <p className="text-sm text-gray-500 mb-4">Click Refresh to reload appointments</p>
-              <Button onClick={() => fetchAllAppointments()} className="bg-blue-600 hover:bg-blue-700">
-                <RefreshCw className="h-4 w-4 mr-2" />
+              <p className="text-sm text-gray-500 mb-4">
+                Click Refresh to reload appointments
+              </p>
+              <Button
+                onClick={() => {
+                  if (!loading && !fetchingRef.current) {
+                    fetchAllAppointments();
+                  }
+                }}
+                className="bg-blue-600 hover:bg-blue-700"
+                disabled={loading || fetchingRef.current}
+              >
+                <RefreshCw
+                  className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`}
+                />
                 Refresh Data
               </Button>
             </div>
@@ -1152,4 +1289,4 @@ const Reports = () => {
   );
 };
 
-export default Reports; 
+export default Reports;
