@@ -79,22 +79,43 @@ const Reports = () => {
       return false;
     }
 
+    // Normalize names for comparison
+    const appointmentLower = appointmentDoctorName.toLowerCase().trim();
+    
     // Map appointment doctor name to settings doctor name
     const mappedName = mapDoctorNameToSettings(appointmentDoctorName);
+    const mappedLower = mappedName ? mappedName.toLowerCase().trim() : "";
 
-    // Check if mapped name or original name is in filter
-    return (
-      filter.includes(appointmentDoctorName) ||
-      filter.includes(mappedName) ||
-      filter.some((filterName) => {
-        const filterMapped = mapDoctorNameToSettings(filterName);
-        return (
-          filterMapped === mappedName ||
-          appointmentDoctorName.includes(filterName) ||
-          filterName.includes(appointmentDoctorName)
-        );
-      })
-    );
+    // Check if mapped name or original name matches any filter
+    return filter.some((filterName) => {
+      if (!filterName) return false;
+      
+      const filterLower = filterName.toLowerCase().trim();
+      const filterMapped = mapDoctorNameToSettings(filterName);
+      const filterMappedLower = filterMapped ? filterMapped.toLowerCase().trim() : "";
+      
+      // Direct matches
+      if (appointmentDoctorName === filterName || mappedName === filterName) {
+        return true;
+      }
+      
+      // Mapped matches
+      if (mappedName === filterMapped || mappedLower === filterMappedLower) {
+        return true;
+      }
+      
+      // Partial matches (contains)
+      if (
+        appointmentLower.includes(filterLower) ||
+        filterLower.includes(appointmentLower) ||
+        mappedLower.includes(filterLower) ||
+        filterMappedLower.includes(mappedLower)
+      ) {
+        return true;
+      }
+      
+      return false;
+    });
   };
 
   const fetchAllAppointments = async () => {
@@ -381,6 +402,13 @@ const Reports = () => {
           font-weight: 600;
           page-break-after: avoid;
         }
+        h3 {
+          font-size: 12px;
+          font-weight: 600;
+          margin: 12px 0 6px 0;
+          color: #000000;
+          page-break-after: avoid;
+        }
         table { 
           width: 100%; 
           border-collapse: collapse; 
@@ -495,85 +523,158 @@ const Reports = () => {
         </div>
       </div>`;
 
+    // Helper function to format date
+    const formatDateForPrint = (appointmentDate) => {
+      if (!appointmentDate) return "";
+      
+      if (appointmentDate instanceof Date) {
+        const year = appointmentDate.getFullYear();
+        const month = appointmentDate.getMonth();
+        const day = appointmentDate.getDate();
+        return new Date(year, month, day).toLocaleDateString("en-US", {
+          weekday: "short",
+          month: "short",
+          day: "numeric",
+          year: "numeric"
+        });
+      } else if (typeof appointmentDate === "string") {
+        const datePart = appointmentDate.split("T")[0];
+        const [year, month, day] = datePart.split("-");
+        if (year && month && day) {
+          return new Date(parseInt(year, 10), parseInt(month, 10) - 1, parseInt(day, 10)).toLocaleDateString("en-US", {
+            weekday: "short",
+            month: "short",
+            day: "numeric",
+            year: "numeric"
+          });
+        }
+      } else {
+        return new Date(appointmentDate).toLocaleDateString("en-US", {
+          weekday: "short",
+          month: "short",
+          day: "numeric",
+          year: "numeric"
+        });
+      }
+      return "";
+    };
+
+    // Helper function to normalize status
+    const normalizeStatus = (status) => {
+      if (!status) return "other";
+      const s = status.toLowerCase();
+      if (s === "confirmed" || s === "scheduled") return "confirmed";
+      if (s === "rescheduled" || s === "reschedule_pending") return "reschedule";
+      if (s === "cancelled" || s === "cancellation_pending") return "cancelled";
+      if (s === "no-show" || s === "no show") return "no-show";
+      if (s === "completed") return "completed";
+      return "other";
+    };
+
+    // Helper function to get status display name
+    const getStatusDisplayName = (status) => {
+      const normalized = normalizeStatus(status);
+      switch (normalized) {
+        case "confirmed": return "Confirmed";
+        case "reschedule": return "Rescheduled";
+        case "cancelled": return "Cancelled";
+        case "no-show": return "No Show";
+        case "completed": return "Completed";
+        default: return status || "Other";
+      }
+    };
+
+    // Helper function to render table rows
+    const renderTableRows = (rows) => {
+      return rows
+        .map((r) => {
+          const formattedDate = formatDateForPrint(r.appointmentDate);
+          return `
+            <tr>
+              <td>${r.appointmentTime || ""}</td>
+              <td>${formattedDate}</td>
+              <td>${r.patientName || r._patientName || ""}</td>
+              <td>${(r.serviceType || "").replace(/_/g, " ")}</td>
+              <td>${r.status || ""}</td>
+              <td>${
+                (r.contactInfo && r.contactInfo.primaryPhone) ||
+                r.contactNumber ||
+                ""
+              }</td>
+            </tr>
+          `;
+        })
+        .join("");
+    };
+
     const sections = Object.entries(groupedByDoctor)
       .map(([doctor, rows]) => {
-        const noShows = rows.filter(
-          (r) => (r.status || "").toLowerCase() === "no-show"
-        );
+        // Group rows by status
+        const statusGroups = {
+          confirmed: [],
+          reschedule: [],
+          cancelled: [],
+          "no-show": [],
+          completed: [],
+          other: []
+        };
+
+        rows.forEach((r) => {
+          const normalizedStatus = normalizeStatus(r.status);
+          statusGroups[normalizedStatus].push(r);
+        });
+
+        // Build status sections
+        const statusSections = [];
+        
+        // Order: Confirmed, Reschedule, Cancelled, No Show, Completed, Other
+        const statusOrder = ["confirmed", "reschedule", "cancelled", "no-show", "completed", "other"];
+        
+        statusOrder.forEach((statusKey) => {
+          const statusRows = statusGroups[statusKey];
+          if (statusRows.length > 0) {
+            const displayName = getStatusDisplayName(statusKey);
+            statusSections.push(`
+              <div style="margin-bottom: 20px;">
+                <h3 style="font-size: 12px; font-weight: 600; margin: 12px 0 6px 0; color: #000000;">
+                  ${displayName} (${statusRows.length})
+                </h3>
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Time</th>
+                      <th>Date</th>
+                      <th>Patient</th>
+                      <th>Service</th>
+                      <th>Status</th>
+                      <th>Phone</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${renderTableRows(statusRows)}
+                  </tbody>
+                </table>
+              </div>
+            `);
+          }
+        });
+
+        const total = rows.length;
+        const noShows = statusGroups["no-show"];
         const noShowNames = noShows.map(
           (r) => r.patientName || r._patientName || ""
         );
+
         return `
         <section>
           <h2>${doctor}</h2>
           <div class="summary">
-            Total: ${rows.length} &nbsp; • &nbsp;
+            Total: ${total} &nbsp; • &nbsp;
             <span class="no-show">No-show: ${noShows.length}${
           noShows.length > 0 ? ` (${noShowNames.join(", ")})` : ""
         }</span>
           </div>
-          <table>
-            <thead>
-              <tr>
-                <th>Time</th>
-                <th>Date</th>
-                <th>Patient</th>
-                <th>Service</th>
-                <th>Status</th>
-                <th>Phone</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${rows
-                .map(
-                  (r) => {
-                    // Format date correctly to avoid timezone issues
-                    let formattedDate = "";
-                    if (r.appointmentDate) {
-                      if (r.appointmentDate instanceof Date) {
-                        const year = r.appointmentDate.getFullYear();
-                        const month = r.appointmentDate.getMonth();
-                        const day = r.appointmentDate.getDate();
-                        formattedDate = new Date(year, month, day).toLocaleDateString();
-                      } else                   if (typeof r.appointmentDate === "string") {
-                    const datePart = r.appointmentDate.split("T")[0];
-                    const [year, month, day] = datePart.split("-");
-                    if (year && month && day) {
-                      formattedDate = new Date(parseInt(year, 10), parseInt(month, 10) - 1, parseInt(day, 10)).toLocaleDateString("en-US", {
-                        weekday: "short",
-                        month: "short",
-                        day: "numeric",
-                        year: "numeric"
-                      });
-                    }
-                  } else {
-                    formattedDate = new Date(r.appointmentDate).toLocaleDateString("en-US", {
-                      weekday: "short",
-                      month: "short",
-                      day: "numeric",
-                      year: "numeric"
-                    });
-                  }
-                    }
-                    return `
-                <tr>
-                  <td>${r.appointmentTime || ""}</td>
-                  <td>${formattedDate}</td>
-                  <td>${r.patientName || r._patientName || ""}</td>
-                  <td>${(r.serviceType || "").replace(/_/g, " ")}</td>
-                  <td>${r.status || ""}</td>
-                  <td>${
-                    (r.contactInfo && r.contactInfo.primaryPhone) ||
-                    r.contactNumber ||
-                    ""
-                  }</td>
-                </tr>
-              `;
-                  }
-                )
-                .join("")}
-            </tbody>
-          </table>
+          ${statusSections.join("")}
         </section>`;
       })
       .join("");
@@ -631,6 +732,13 @@ const Reports = () => {
     // Filter appointments based on mode and selected doctors
     // Use dynamic doctor names for filtering
     const doctorsToFilter = selectedDoctors.length === 0 ? getDoctorNames() : selectedDoctors;
+    
+    // Debug: Log filter state
+    console.log('Doctor filter state:', {
+      selectedDoctors,
+      doctorsToFilter,
+      totalAppointments: allAppointments.length
+    });
     
     const base = allAppointments.filter((a) => {
       // Filter by selected doctors - use flexible matching
@@ -704,26 +812,53 @@ const Reports = () => {
       doctorName: a.doctorName,
     }));
 
-    // Group by doctor (only include selected doctors) - use flexible matching
+    // Group by doctor - rows are already filtered, so just group them
+    // Normalize doctor names for consistent grouping
     const grouped = rows.reduce((acc, r) => {
-      // Map appointment doctor name to settings doctor name for matching
-      const mappedDoctorName = mapDoctorNameToSettings(r.doctorName);
-      
-      // Check if this doctor should be included
-      const shouldInclude = doctorsToFilter.length === 0 || 
-        doctorsToFilter.some(selectedDoc => {
-          const mappedSelected = mapDoctorNameToSettings(selectedDoc);
-          return mappedDoctorName === mappedSelected || 
-                 r.doctorName === selectedDoc ||
-                 selectedDoc === mappedDoctorName ||
-                 matchesDoctorFilter(r.doctorName, [selectedDoc]);
-        });
-      
-      if (shouldInclude) {
-        // Use the original doctor name as key
-        acc[r.doctorName] = acc[r.doctorName] || [];
-        acc[r.doctorName].push(r);
+      if (!r.doctorName) {
+        // Handle appointments without doctor names
+        const key = "Unknown Doctor";
+        acc[key] = acc[key] || [];
+        acc[key].push(r);
+        return acc;
       }
+
+      // Map to normalized doctor name for consistent grouping
+      const normalizedName = mapDoctorNameToSettings(r.doctorName);
+      
+      // Use normalized name as key, but prefer settings doctor name if available
+      let groupKey = normalizedName;
+      
+      // If we have clinic settings, use the exact doctor name from settings
+      if (clinicSettings) {
+        const obgyneName = clinicSettings.obgyneDoctor?.name;
+        const pediatricName = clinicSettings.pediatrician?.name;
+        
+        // Check if this appointment matches OB-GYNE doctor
+        if (obgyneName && (
+          normalizedName === obgyneName ||
+          r.doctorName.includes(obgyneName) ||
+          obgyneName.includes(r.doctorName) ||
+          r.doctorName.toLowerCase().includes("maria") ||
+          r.doctorName.toLowerCase().includes("ob")
+        )) {
+          groupKey = obgyneName;
+        }
+        // Check if this appointment matches Pediatric doctor
+        else if (pediatricName && (
+          normalizedName === pediatricName ||
+          r.doctorName.includes(pediatricName) ||
+          pediatricName.includes(r.doctorName) ||
+          r.doctorName.toLowerCase().includes("shara") ||
+          r.doctorName.toLowerCase().includes("pediatric") ||
+          r.doctorName.toLowerCase().includes("pedia")
+        )) {
+          groupKey = pediatricName;
+        }
+      }
+      
+      acc[groupKey] = acc[groupKey] || [];
+      acc[groupKey].push(r);
       
       return acc;
     }, {});
@@ -738,6 +873,13 @@ const Reports = () => {
     else if (mode === "completed") label = "Completed Appointments";
     else label = "All Appointments";
     
+    // Debug: Log grouping results
+    console.log('Grouped appointments:', {
+      groupedKeys: Object.keys(grouped),
+      totalRows: rows.length,
+      groupedCounts: Object.entries(grouped).map(([key, value]) => ({ doctor: key, count: value.length }))
+    });
+
     // Check if there's any data to print
     if (Object.keys(grouped).length === 0) {
       alert(`No appointments found for ${label} with the selected filters.`);
@@ -854,10 +996,20 @@ const Reports = () => {
                 Both Doctors
               </Button>
               {dynamicDoctorNames.map((doctor) => {
+                // Check if this doctor is selected (using flexible matching)
                 const isSelected = selectedDoctors.length > 0 && selectedDoctors.some(selectedDoc => {
-                  return selectedDoc === doctor || 
-                         mapDoctorNameToSettings(selectedDoc) === doctor ||
-                         mapDoctorNameToSettings(doctor) === selectedDoc;
+                  // Direct match
+                  if (selectedDoc === doctor) return true;
+                  
+                  // Map both to settings names and compare
+                  const mappedSelected = mapDoctorNameToSettings(selectedDoc);
+                  const mappedDoctor = mapDoctorNameToSettings(doctor);
+                  if (mappedSelected === mappedDoctor) return true;
+                  
+                  // Check if they refer to the same doctor
+                  if (mappedSelected === doctor || mappedDoctor === selectedDoc) return true;
+                  
+                  return false;
                 });
                 
                 return (
@@ -867,21 +1019,35 @@ const Reports = () => {
                     size="sm"
                     onClick={() => {
                       if (selectedDoctors.length === 0) {
+                        // First selection - add this doctor
                         setSelectedDoctors([doctor]);
                       } else if (isSelected) {
+                        // Deselect this doctor
                         const newSelected = selectedDoctors.filter(d => {
+                          // Keep doctors that don't match this one
+                          if (d === doctor) return false;
                           const mappedD = mapDoctorNameToSettings(d);
                           const mappedDoctor = mapDoctorNameToSettings(doctor);
-                          return mappedD !== mappedDoctor && d !== doctor;
+                          return mappedD !== mappedDoctor;
                         });
                         setSelectedDoctors(newSelected.length === 0 ? [] : newSelected);
                       } else {
-                        setSelectedDoctors([...selectedDoctors, doctor]);
+                        // Add this doctor to selection
+                        // Check if we already have a doctor that maps to the same one
+                        const alreadyHasSameDoctor = selectedDoctors.some(d => {
+                          const mappedD = mapDoctorNameToSettings(d);
+                          const mappedDoctor = mapDoctorNameToSettings(doctor);
+                          return mappedD === mappedDoctor;
+                        });
+                        
+                        if (!alreadyHasSameDoctor) {
+                          setSelectedDoctors([...selectedDoctors, doctor]);
+                        }
                       }
                     }}
                     className={isSelected ? "bg-blue-600 hover:bg-blue-700 text-white" : ""}
                   >
-                    {doctor.includes("Maria") || doctor.toLowerCase().includes("ob") ? "OB-GYNE" : "Pediatrician"}
+                    {doctor.includes("Maria") || doctor.toLowerCase().includes("ob") || doctor.toLowerCase().includes("ob-gyne") ? "OB-GYNE" : "Pediatrician"}
                   </Button>
                 );
               })}

@@ -100,9 +100,16 @@ const MedicalRecordsTab = ({ patient, onEditConsultation, onDeleteConsultation, 
       ? patient.obGyneRecord?.consultations
       : patient.pediatricRecord?.consultations;
 
-  const immunizations = patient.patientType === "pediatric"
-    ? patient.pediatricRecord?.immunizations
-    : null;
+  // Get immunizations - prefer immunizationRecords array, fallback to immunizations (could be object or array)
+  const getImmunizations = () => {
+    if (patient.patientType !== "pediatric") return null;
+    const records = patient.pediatricRecord?.immunizationRecords;
+    if (records && Array.isArray(records)) return records;
+    // Fallback: check if immunizations exists and is an array
+    const oldRecords = patient.pediatricRecord?.immunizations;
+    return Array.isArray(oldRecords) ? oldRecords : null;
+  };
+  const immunizations = getImmunizations();
 
   const renderObGyneConsultation = (consultation) => (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -134,7 +141,30 @@ const MedicalRecordsTab = ({ patient, onEditConsultation, onDeleteConsultation, 
     </div>
   );
 
-  // A renderer for pediatric consultations would go here
+  const renderPediatricConsultation = (consultation) => (
+    <div className="space-y-4">
+      <div className="grid grid-cols-1 gap-4">
+        <div>
+          <InfoItem
+            label="History & Physical Examination"
+            value={consultation.historyAndPE}
+          />
+        </div>
+        <div>
+          <InfoItem
+            label="Nature of Transaction"
+            value={consultation.natureTxn}
+          />
+        </div>
+        <div>
+          <InfoItem
+            label="Impression/Diagnosis"
+            value={consultation.impression}
+          />
+        </div>
+      </div>
+    </div>
+  );
 
   return (
     <div className="space-y-4">
@@ -174,7 +204,7 @@ const MedicalRecordsTab = ({ patient, onEditConsultation, onDeleteConsultation, 
                 {patient.patientType === "ob-gyne" ? (
                   renderObGyneConsultation(consultation)
                 ) : (
-                  <p>Pediatric record view.</p>
+                  renderPediatricConsultation(consultation)
                 )}
               </CardContent>
             </Card>
@@ -784,7 +814,8 @@ const PatientDetail = () => {
           min-height: calc(297mm - 95px);
         }
         .patient-info {
-          margin-bottom: 20px;
+          margin-top: 40px;
+          margin-bottom: 0;
           padding: 12px;
           border: 1px solid #000000;
           border-radius: 4px;
@@ -815,18 +846,19 @@ const PatientDetail = () => {
         h3 {
           font-size: 12px;
           font-weight: 600;
-          margin: 24px 0 12px 0;
+          margin: 12px 0 12px 0;
           color: #000000;
           page-break-after: avoid;
           break-after: avoid;
         }
         h3:first-of-type {
-          margin-top: 16px;
+          margin-top: 4px;
+          margin-bottom: 8px;
         }
         .consultation-section {
-          margin-top: 100px;
+          margin-top: 8px;
           margin-bottom: 30px;
-          padding-top: 30px;
+          padding-top: 12px;
           padding-bottom: 12px;
           padding-left: 12px;
           padding-right: 12px;
@@ -839,7 +871,7 @@ const PatientDetail = () => {
           widows: 3;
         }
         .consultation-section:first-child {
-          margin-top: 0;
+          margin-top: 4px;
         }
         .consultation-section:last-child {
           margin-bottom: 0;
@@ -959,14 +991,15 @@ const PatientDetail = () => {
           h3 {
             page-break-after: avoid;
             break-after: avoid;
-            margin-top: 24px;
+            margin-top: 12px;
           }
           h3:first-of-type {
-            margin-top: 16px;
+            margin-top: 4px;
           }
           .patient-info {
             page-break-after: avoid;
             break-after: avoid;
+            margin-top: 40px !important;
           }
           /* Ensure enough space at top of new pages */
           @page {
@@ -983,12 +1016,12 @@ const PatientDetail = () => {
             margin-top: 50px;
           }
           .consultation-section, .immunization-section {
-            margin-top: 60px !important;
-            padding-top: 20px !important;
+            margin-top: 8px !important;
+            padding-top: 12px !important;
           }
           .consultation-section:first-child,
           .immunization-section:first-child {
-            margin-top: 0 !important;
+            margin-top: 4px !important;
           }
           /* Add extra bottom margin to even-numbered records in print */
           .consultation-section:nth-child(even),

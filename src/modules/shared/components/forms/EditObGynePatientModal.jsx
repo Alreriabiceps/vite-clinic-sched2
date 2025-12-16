@@ -136,8 +136,8 @@ const EditObGynePatientModal = ({ patient, onClose, onSuccess }) => {
         {
           year: "",
           place: "",
-          deliveryType: "",
-          birthWeight: "",
+          typeOfDelivery: "",
+          bw: "",
           complications: "",
         },
       ],
@@ -731,8 +731,8 @@ const EditObGynePatientModal = ({ patient, onClose, onSuccess }) => {
                               </td>
                               <td className="border border-gray-300 p-2">
                                 <Input
-                                  name={`obstetricHistory.${index}.deliveryType`}
-                                  value={history.deliveryType || ""}
+                                  name={`obstetricHistory.${index}.typeOfDelivery`}
+                                  value={history.typeOfDelivery || ""}
                                   onChange={handleChange}
                                   placeholder="Type"
                                   className="border-0 shadow-none focus:ring-0 h-8 text-sm"
@@ -740,8 +740,8 @@ const EditObGynePatientModal = ({ patient, onClose, onSuccess }) => {
                               </td>
                               <td className="border border-gray-300 p-2">
                                 <Input
-                                  name={`obstetricHistory.${index}.birthWeight`}
-                                  value={history.birthWeight || ""}
+                                  name={`obstetricHistory.${index}.bw`}
+                                  value={history.bw || ""}
                                   onChange={handleChange}
                                   placeholder="BW"
                                   className="border-0 shadow-none focus:ring-0 h-8 text-sm"
@@ -999,31 +999,15 @@ const EditObGynePatientModal = ({ patient, onClose, onSuccess }) => {
                       </h4>
                       <div className="space-y-2">
                         <label className="text-sm font-medium text-gray-700">
-                          Protein
+                          Urinalysis Result
                         </label>
                         <Input
-                          name="baselineDiagnostics.urinalysis.protein"
+                          name="baselineDiagnostics.urinalysis"
                           value={
-                            formData.baselineDiagnostics?.urinalysis?.protein ||
-                            ""
+                            formData.baselineDiagnostics?.urinalysis || ""
                           }
                           onChange={handleChange}
-                          placeholder="Protein"
-                          className="h-10"
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <label className="text-sm font-medium text-gray-700">
-                          Glucose
-                        </label>
-                        <Input
-                          name="baselineDiagnostics.urinalysis.glucose"
-                          value={
-                            formData.baselineDiagnostics?.urinalysis?.glucose ||
-                            ""
-                          }
-                          onChange={handleChange}
-                          placeholder="Glucose"
+                          placeholder="Urinalysis result"
                           className="h-10"
                         />
                       </div>
@@ -1038,9 +1022,9 @@ const EditObGynePatientModal = ({ patient, onClose, onSuccess }) => {
                           Blood Type
                         </label>
                         <Input
-                          name="baselineDiagnostics.bloodTyping"
+                          name="baselineDiagnostics.bloodType"
                           value={
-                            formData.baselineDiagnostics?.bloodTyping || ""
+                            formData.baselineDiagnostics?.bloodType || ""
                           }
                           onChange={handleChange}
                           placeholder="Blood Type"
@@ -1049,13 +1033,13 @@ const EditObGynePatientModal = ({ patient, onClose, onSuccess }) => {
                       </div>
                       <div className="space-y-2">
                         <label className="text-sm font-medium text-gray-700">
-                          VDRL
+                          VDRL/RPR
                         </label>
                         <Input
-                          name="baselineDiagnostics.vdrl"
-                          value={formData.baselineDiagnostics?.vdrl || ""}
+                          name="baselineDiagnostics.vdrlRpr"
+                          value={formData.baselineDiagnostics?.vdrlRpr || ""}
                           onChange={handleChange}
-                          placeholder="VDRL"
+                          placeholder="VDRL/RPR"
                           className="h-10"
                         />
                       </div>
@@ -1146,26 +1130,12 @@ const EditObGynePatientModal = ({ patient, onClose, onSuccess }) => {
                       </div>
                       <div className="space-y-2">
                         <label className="text-sm font-medium text-gray-700">
-                          TT4
+                          Tdap
                         </label>
                         <Input
-                          name="immunizations.tt4"
+                          name="immunizations.tdap"
                           value={
-                            formData.immunizations?.tt4?.split("T")[0] || ""
-                          }
-                          onChange={handleChange}
-                          type="date"
-                          className="h-10"
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <label className="text-sm font-medium text-gray-700">
-                          TT5
-                        </label>
-                        <Input
-                          name="immunizations.tt5"
-                          value={
-                            formData.immunizations?.tt5?.split("T")[0] || ""
+                            formData.immunizations?.tdap?.split("T")[0] || ""
                           }
                           onChange={handleChange}
                           type="date"
@@ -1180,28 +1150,12 @@ const EditObGynePatientModal = ({ patient, onClose, onSuccess }) => {
                       </h4>
                       <div className="space-y-2">
                         <label className="text-sm font-medium text-gray-700">
-                          Influenza 1
+                          Flu
                         </label>
                         <Input
-                          name="immunizations.influenza1"
+                          name="immunizations.flu"
                           value={
-                            formData.immunizations?.influenza1?.split("T")[0] ||
-                            ""
-                          }
-                          onChange={handleChange}
-                          type="date"
-                          className="h-10"
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <label className="text-sm font-medium text-gray-700">
-                          Influenza 2
-                        </label>
-                        <Input
-                          name="immunizations.influenza2"
-                          value={
-                            formData.immunizations?.influenza2?.split("T")[0] ||
-                            ""
+                            formData.immunizations?.flu?.split("T")[0] || ""
                           }
                           onChange={handleChange}
                           type="date"
@@ -1216,12 +1170,54 @@ const EditObGynePatientModal = ({ patient, onClose, onSuccess }) => {
                       </h4>
                       <div className="space-y-2">
                         <label className="text-sm font-medium text-gray-700">
-                          COVID-19
+                          COVID-19 Brand
                         </label>
                         <Input
-                          name="immunizations.covid19"
+                          name="immunizations.covid19.brand"
                           value={
-                            formData.immunizations?.covid19?.split("T")[0] || ""
+                            formData.immunizations?.covid19?.brand || ""
+                          }
+                          onChange={handleChange}
+                          placeholder="COVID-19 vaccine brand"
+                          className="h-10"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium text-gray-700">
+                          COVID-19 Primary
+                        </label>
+                        <Input
+                          name="immunizations.covid19.primary"
+                          value={
+                            formData.immunizations?.covid19?.primary?.split("T")[0] || ""
+                          }
+                          onChange={handleChange}
+                          type="date"
+                          className="h-10"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium text-gray-700">
+                          COVID-19 Booster
+                        </label>
+                        <Input
+                          name="immunizations.covid19.booster"
+                          value={
+                            formData.immunizations?.covid19?.booster?.split("T")[0] || ""
+                          }
+                          onChange={handleChange}
+                          type="date"
+                          className="h-10"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium text-gray-700">
+                          HPV
+                        </label>
+                        <Input
+                          name="immunizations.hpv"
+                          value={
+                            formData.immunizations?.hpv?.split("T")[0] || ""
                           }
                           onChange={handleChange}
                           type="date"

@@ -79,11 +79,19 @@ const AddImmunizationModal = ({ patientId, immunization, onClose, onSuccess }) =
     setLoading(true);
 
     try {
+      // Map vaccine value to vaccineName for display
+      const vaccineName = vaccineOptions.find(opt => opt.value === formData.vaccine)?.label || formData.vaccine;
+      const dataToSend = {
+        ...formData,
+        vaccineName: vaccineName,
+        date: formData.date
+      };
+
       if (isEditing && immunization?._id) {
-        await patientsAPI.updateImmunization(patientId, immunization._id, formData);
+        await patientsAPI.updateImmunization(patientId, immunization._id, dataToSend);
         toast.success("Immunization record updated successfully!");
       } else {
-        await patientsAPI.addImmunization(patientId, formData);
+        await patientsAPI.addImmunization(patientId, dataToSend);
         toast.success("Immunization record added successfully!");
       }
       onSuccess && onSuccess();
