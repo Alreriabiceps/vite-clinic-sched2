@@ -1,22 +1,64 @@
-import { useState } from 'react';
-import { useAuth, Button, Input, Card, CardContent, CardDescription, CardHeader, CardTitle, LoadingSpinner } from '../../shared';
+import { useState, useEffect } from 'react';
+import { useAuth, Button, Input, Card, CardContent, CardDescription, CardHeader, CardTitle, LoadingSpinner, Checkbox } from '../../shared';
 import { Heart, Stethoscope, Baby } from 'lucide-react';
+
+const REMEMBER_ME_KEY = 'admin_remember_me';
+const REMEMBERED_CREDENTIALS_KEY = 'admin_remembered_credentials';
 
 export default function LoginPage() {
   const [credentials, setCredentials] = useState({
     username: '',
     password: ''
   });
+  const [rememberMe, setRememberMe] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   
   const { login, error } = useAuth();
+
+  // Load remembered credentials on mount
+  useEffect(() => {
+    const remembered = localStorage.getItem(REMEMBER_ME_KEY) === 'true';
+    if (remembered) {
+      const savedCredentials = localStorage.getItem(REMEMBERED_CREDENTIALS_KEY);
+      if (savedCredentials) {
+        try {
+          const parsed = JSON.parse(savedCredentials);
+          setCredentials({
+            username: parsed.username || '',
+            password: parsed.password || ''
+          });
+          setRememberMe(true);
+        } catch (e) {
+          console.error('Error loading remembered credentials:', e);
+        }
+      }
+    }
+  }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setIsLoading(true);
     
     try {
-      await login(credentials);
+      const result = await login(credentials);
+      
+      // Only save credentials if login was successful and "Remember Me" is checked
+      if (result && result.success) {
+        if (rememberMe) {
+          localStorage.setItem(REMEMBER_ME_KEY, 'true');
+          localStorage.setItem(REMEMBERED_CREDENTIALS_KEY, JSON.stringify({
+            username: credentials.username,
+            password: credentials.password
+          }));
+        } else {
+          // Clear saved credentials if "Remember Me" is unchecked
+          localStorage.removeItem(REMEMBER_ME_KEY);
+          localStorage.removeItem(REMEMBERED_CREDENTIALS_KEY);
+        }
+      }
+    } catch (err) {
+      // Login failed, don't save credentials
+      console.error('Login failed:', err);
     } finally {
       setIsLoading(false);
     }
@@ -94,6 +136,21 @@ export default function LoginPage() {
                   required
                   disabled={isLoading}
                 />
+              </div>
+
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="rememberMe"
+                  checked={rememberMe}
+                  onCheckedChange={(checked) => setRememberMe(checked === true)}
+                  disabled={isLoading}
+                />
+                <label
+                  htmlFor="rememberMe"
+                  className="text-sm font-medium text-gray-700 cursor-pointer select-none"
+                >
+                  Remember me
+                </label>
               </div>
 
               {error && (
