@@ -808,14 +808,6 @@ const PatientDetail = () => {
         .print-footer .footer-divider {
           color: #000000;
         }
-        .print-footer .page-info {
-          background: white;
-          border: 1px solid #000000;
-          padding: 2px 8px;
-          border-radius: 4px;
-          font-weight: 600;
-          color: #000000;
-        }
         .print-content {
           margin-top: 50px;
           margin-bottom: 45px;
@@ -1080,8 +1072,6 @@ const PatientDetail = () => {
             })}</span>
             <span class="footer-divider">•</span>
             <span>${clinicName}</span>
-            <span class="footer-divider">•</span>
-            <span class="page-info">Page <span class="page-number"></span></span>
           </div>
         </div>
       </div>`;
@@ -1220,14 +1210,6 @@ const PatientDetail = () => {
           <meta charset="utf-8"/>
           <title>${clinicName} - Medical Records: ${patientName}</title>
           ${styles}
-          <script>
-            window.onload = function() {
-              const pageNumbers = document.querySelectorAll('.page-number');
-              pageNumbers.forEach((el, idx) => {
-                el.textContent = (idx + 1);
-              });
-            };
-          </script>
         </head>
         <body>
           ${printHeader}

@@ -808,6 +808,22 @@ export default function PatientAppointments() {
                                     )}
                                   </>
                                 )}
+                                {/* Show book new appointment button for slot conflict cancellations */}
+                                {appointment.status === "cancelled" &&
+                                  appointment.cancellationReason?.includes("confirmed for another patient") && (
+                                    <button
+                                      type="button"
+                                      className="h-7 px-2 rounded bg-blue-600 hover:bg-blue-700 text-white text-sm cursor-pointer relative z-10"
+                                      onClick={(e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        navigate("/patient/book-appointment");
+                                      }}
+                                    >
+                                      <CalendarIcon className="h-3 w-3 inline mr-1" />
+                                      Book New
+                                    </button>
+                                  )}
                                 {/* Removed Accept Cancellation button - admin cancellations are now immediate */}
                               </div>
                             </td>
@@ -922,6 +938,22 @@ export default function PatientAppointments() {
                     {selectedAppointment.cancellationReason ||
                       selectedAppointment.cancellationRequest?.reason}
                   </p>
+                  {/* Show book new appointment button if canceled due to slot conflict */}
+                  {(selectedAppointment.cancellationReason?.includes("confirmed for another patient") ||
+                    selectedAppointment.cancellationRequest?.reason?.includes("confirmed for another patient")) && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="mt-3 text-blue-600 border-blue-300 hover:bg-blue-50"
+                      onClick={() => {
+                        setShowReasonModal(false);
+                        navigate("/patient/book-appointment");
+                      }}
+                    >
+                      <CalendarIcon className="h-4 w-4 mr-1" />
+                      Book New Appointment
+                    </Button>
+                  )}
                 </div>
               )}
 
@@ -1029,11 +1061,25 @@ export default function PatientAppointments() {
                             appointment.status === "cancellation_pending") &&
                             (appointment.cancellationReason ||
                               appointment.cancellationRequest?.reason) && (
-                              <p className="text-sm text-red-600 mt-2 italic break-words whitespace-pre-wrap">
-                                <strong>Cancellation Reason:</strong>{" "}
-                                {appointment.cancellationReason ||
-                                  appointment.cancellationRequest?.reason}
-                              </p>
+                              <div className="mt-2">
+                                <p className="text-sm text-red-600 italic break-words whitespace-pre-wrap">
+                                  <strong>Cancellation Reason:</strong>{" "}
+                                  {appointment.cancellationReason ||
+                                    appointment.cancellationRequest?.reason}
+                                </p>
+                                {/* Show book new appointment button if canceled due to slot conflict */}
+                                {appointment.cancellationReason?.includes("confirmed for another patient") && (
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="mt-2 text-blue-600 border-blue-300 hover:bg-blue-50"
+                                    onClick={() => navigate("/patient/book-appointment")}
+                                  >
+                                    <CalendarIcon className="h-4 w-4 mr-1" />
+                                    Book New Appointment
+                                  </Button>
+                                )}
+                              </div>
                             )}
                         </div>
 

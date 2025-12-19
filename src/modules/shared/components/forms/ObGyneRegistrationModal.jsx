@@ -233,6 +233,11 @@ export default function ObGyneRegistrationModal({
       if (onSuccess) onSuccess(response.data);
       onClose();
     } catch (err) {
+      // Ignore canceled errors (common in React Strict Mode development)
+      if (err.code === 'ERR_CANCELED' || err.name === 'CanceledError') {
+        setIsLoading(false);
+        return;
+      }
       console.error("Registration error:", err);
       if (err.response && err.response.data) {
         console.error(

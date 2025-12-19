@@ -13,6 +13,11 @@ import {
   ObGyneRegistrationModal,
   PediatricRegistrationModal,
   toast,
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
 } from "../../shared";
 import { useState, useEffect, useRef } from "react";
 import {
@@ -63,6 +68,7 @@ export default function Patients() {
   const [error, setError] = useState("");
 
   // Modal states
+  const [isPatientTypeDialogOpen, setIsPatientTypeDialogOpen] = useState(false);
   const [isObGyneModalOpen, setIsObGyneModalOpen] = useState(false);
   const [isPediatricModalOpen, setIsPediatricModalOpen] = useState(false);
 
@@ -102,9 +108,22 @@ export default function Patients() {
       // Group appointments by patient and get the latest one
       const lastVisits = {};
       appointments.forEach((apt) => {
-        if (apt.patient?._id || apt.patient) {
-          const patientId = apt.patient._id || apt.patient;
-          if (!lastVisits[patientId] || new Date(apt.appointmentDate) > new Date(lastVisits[patientId])) {
+        // Handle both populated patient object and patient ID string/ObjectId
+        let patientId = null;
+        if (apt.patient) {
+          if (typeof apt.patient === 'object' && apt.patient._id) {
+            // Populated patient object
+            patientId = String(apt.patient._id);
+          } else {
+            // Just the patient ID (string or ObjectId)
+            patientId = String(apt.patient);
+          }
+        }
+        
+        if (patientId && apt.appointmentDate) {
+          // Convert to string for consistent key matching
+          const existingDate = lastVisits[patientId];
+          if (!existingDate || new Date(apt.appointmentDate) > new Date(existingDate)) {
             lastVisits[patientId] = apt.appointmentDate;
           }
         }
@@ -112,10 +131,11 @@ export default function Patients() {
       
       setPatientLastVisits(lastVisits);
     } catch (error) {
-      // Suppress CanceledError (expected from request throttling)
-      if (error?.code !== 'ERR_CANCELED' && error?.name !== 'CanceledError' && !error?.silent) {
-        console.error("Error fetching last visits:", error);
+      // Ignore canceled errors (common in React Strict Mode development)
+      if (error.code === 'ERR_CANCELED' || error.name === 'CanceledError') {
+        return;
       }
+      console.error("Error fetching last visits:", error);
     }
   };
 
@@ -130,7 +150,8 @@ export default function Patients() {
     }, 500);
 
     return () => clearTimeout(timer);
-  }, [searchQuery]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchQuery, selectedType]);
 
   const fetchPatients = async () => {
     try {
@@ -144,17 +165,19 @@ export default function Patients() {
         params.type = selectedType;
       }
       const response = await patientsAPI.getAll(params);
-      const data = extractData(response);
+      const data = response.data.data;
       setPatients(data.patients || []);
       setTotalPages(data.pagination?.pages || 1);
       setHasMore(currentPage < (data.pagination?.pages || 1));
     } catch (error) {
-      // Suppress CanceledError (expected from request throttling)
-      if (error?.code !== 'ERR_CANCELED' && error?.name !== 'CanceledError' && !error?.silent) {
-        console.error("Error fetching patients:", error);
-        setError("Failed to load patients");
-        setPatients([]);
+      // Ignore canceled errors (common in React Strict Mode development)
+      if (error.code === 'ERR_CANCELED' || error.name === 'CanceledError') {
+        setIsLoading(false);
+        return;
       }
+      console.error("Error fetching patients:", error);
+      setError("Failed to load patients");
+      setPatients([]);
     } finally {
       setIsLoading(false);
     }
@@ -173,25 +196,27 @@ export default function Patients() {
         obgynePatients: data.obgynePatients || 0,
       });
     } catch (error) {
-      // Suppress CanceledError (expected from request throttling)
-      if (error?.code !== 'ERR_CANCELED' && error?.name !== 'CanceledError' && !error?.silent) {
-        console.error("Error fetching stats:", error);
-        // Fallback to search method if stats endpoint fails
-        try {
-          const response = await patientsAPI.search({ limit: 1 });
-          const total = response.data?.pagination?.total || 0;
+      // Ignore canceled errors (common in React Strict Mode development)
+      if (error.code === 'ERR_CANCELED' || error.name === 'CanceledError') {
+        return;
+      }
+      console.error("Error fetching stats:", error);
+      // Fallback to search method if stats endpoint fails
+      try {
+        const response = await patientsAPI.search({ limit: 1 });
+        const total = response.data?.pagination?.total || 0;
 
-          setStats({
-            totalPatients: total,
-            pediatricPatients: 0,
-            obgynePatients: 0,
-          });
-        } catch (fallbackError) {
-          // Suppress CanceledError in fallback too
-          if (fallbackError?.code !== 'ERR_CANCELED' && fallbackError?.name !== 'CanceledError' && !fallbackError?.silent) {
-            console.error("Fallback stats error:", fallbackError);
-          }
+        setStats({
+          totalPatients: total,
+          pediatricPatients: 0,
+          obgynePatients: 0,
+        });
+      } catch (fallbackError) {
+        // Ignore canceled errors in fallback too
+        if (fallbackError.code === 'ERR_CANCELED' || fallbackError.name === 'CanceledError') {
+          return;
         }
+        console.error("Fallback stats error:", fallbackError);
       }
     }
   };
@@ -210,17 +235,19 @@ export default function Patients() {
       }
 
       const response = await patientsAPI.search(params);
-      const data = extractData(response);
+      const data = response.data;
 
       setPatients(data.patients || []);
       setTotalPages(data.pagination?.pages || 1);
       setCurrentPage(1);
     } catch (error) {
-      // Suppress CanceledError (expected from request throttling)
-      if (error?.code !== 'ERR_CANCELED' && error?.name !== 'CanceledError' && !error?.silent) {
-        console.error("Error searching patients:", error);
-        setError("Search failed");
+      // Ignore canceled errors (common in React Strict Mode development)
+      if (error.code === 'ERR_CANCELED' || error.name === 'CanceledError') {
+        setIsSearching(false);
+        return;
       }
+      console.error("Error searching patients:", error);
+      setError("Search failed");
     } finally {
       setIsSearching(false);
     }
@@ -270,26 +297,19 @@ export default function Patients() {
   };
 
   const getLastVisit = (patient) => {
-    const patientId = patient._id;
+    // Convert patient ID to string for consistent matching
+    const patientId = String(patient._id);
     const lastVisit = patientLastVisits[patientId];
     return lastVisit ? formatDate(lastVisit) : "N/A";
   };
 
   const getContactInfo = (patient) => {
-    const email = patient.contactInfo?.email || patient.obGyneRecord?.email || "";
     const phone = patient.contactInfo?.phoneNumber || 
                   patient.obGyneRecord?.contactNumber || 
                   patient.pediatricRecord?.contactNumber || 
                   "";
     
-    if (email && phone) {
-      return `${email}, ${phone}`;
-    } else if (email) {
-      return email;
-    } else if (phone) {
-      return phone;
-    }
-    return "N/A";
+    return phone || "N/A";
   };
 
   const calculateAge = (dateOfBirth) => {
@@ -482,8 +502,7 @@ export default function Patients() {
           variant="clinic"
           className="flex items-center gap-2"
           onClick={() => {
-            // Show a dialog to choose patient type or default to OB-GYNE
-            setIsObGyneModalOpen(true);
+            setIsPatientTypeDialogOpen(true);
           }}
         >
           <Plus className="h-4 w-4" />
@@ -660,7 +679,7 @@ export default function Patients() {
               {!searchQuery && (
                 <Button
                   variant="clinic"
-                  onClick={() => setIsObGyneModalOpen(true)}
+                  onClick={() => setIsPatientTypeDialogOpen(true)}
                   className="flex items-center gap-2 mx-auto"
                 >
                   <Plus className="h-4 w-4" />
@@ -765,6 +784,48 @@ export default function Patients() {
           )}
         </CardContent>
       </Card>
+
+      {/* Patient Type Selection Dialog */}
+      <Dialog open={isPatientTypeDialogOpen} onOpenChange={setIsPatientTypeDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Select Patient Type</DialogTitle>
+            <DialogDescription>
+              Choose the type of patient you want to register
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid grid-cols-1 gap-4 py-4">
+            <Button
+              variant="outline"
+              className="flex flex-col items-center justify-center h-32 gap-3 hover:bg-pink-50 hover:border-pink-300 transition-colors"
+              onClick={() => {
+                setIsPatientTypeDialogOpen(false);
+                setIsObGyneModalOpen(true);
+              }}
+            >
+              <Heart className="h-8 w-8 text-pink-600" />
+              <div className="text-center">
+                <div className="font-semibold">OB-GYNE Patient</div>
+                <div className="text-sm text-gray-500">For obstetrics and gynecology</div>
+              </div>
+            </Button>
+            <Button
+              variant="outline"
+              className="flex flex-col items-center justify-center h-32 gap-3 hover:bg-blue-50 hover:border-blue-300 transition-colors"
+              onClick={() => {
+                setIsPatientTypeDialogOpen(false);
+                setIsPediatricModalOpen(true);
+              }}
+            >
+              <Baby className="h-8 w-8 text-blue-600" />
+              <div className="text-center">
+                <div className="font-semibold">Pediatric Patient</div>
+                <div className="text-sm text-gray-500">For children and infants</div>
+              </div>
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Modals */}
       <ObGyneRegistrationModal

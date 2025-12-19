@@ -31,9 +31,15 @@ export default function DashboardLayout() {
   const socketRef = useRef();
 
   useEffect(() => {
-    // Request notification permission on mount
-    if ('Notification' in window && Notification.permission !== 'granted') {
-      Notification.requestPermission();
+    // Request notification permission only if it's in 'default' state (not denied/blocked)
+    // This prevents annoying repeated prompts and respects user's previous choice
+    if ('Notification' in window && Notification.permission === 'default') {
+      // Only request permission if it hasn't been set yet
+      // Don't request if user has already denied or blocked it
+      Notification.requestPermission().catch((err) => {
+        // Silently handle permission errors (user may have blocked it)
+        console.debug('Notification permission request failed:', err);
+      });
     }
 
     // Determine socket URL
@@ -41,11 +47,46 @@ export default function DashboardLayout() {
     // Remove /api suffix if present to get the root URL for socket.io
     const socketUrl = apiUrl.replace(/\/api\/?$/, '');
 
-    // Connect to socket server
-    socketRef.current = io(socketUrl);
+    // Connect to socket server with error handling
+    socketRef.current = io(socketUrl, {
+      reconnection: true,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 5000,
+      reconnectionAttempts: 5,
+      timeout: 20000,
+      transports: ['polling', 'websocket']
+    });
 
     socketRef.current.on('connect', () => {
       console.log('Connected to socket server');
+    });
+
+    socketRef.current.on('connect_error', (error) => {
+      // Only log connection errors in development, and only once
+      if (import.meta.env.DEV) {
+        console.debug('Socket.io connection error (backend may be offline):', error.message);
+      }
+    });
+
+    socketRef.current.on('disconnect', (reason) => {
+      // Only log unexpected disconnects
+      if (reason !== 'io client disconnect') {
+        console.debug('Socket.io disconnected:', reason);
+      }
+    });
+
+    socketRef.current.on('reconnect_attempt', (attemptNumber) => {
+      // Silently attempt reconnection (only log in development if needed)
+      if (import.meta.env.DEV && attemptNumber <= 1) {
+        console.debug('Attempting to reconnect to socket server...');
+      }
+    });
+
+    socketRef.current.on('reconnect_failed', () => {
+      // Only log in development
+      if (import.meta.env.DEV) {
+        console.debug('Socket.io reconnection failed. Backend server may be offline.');
+      }
     });
 
     socketRef.current.on('appointment:created', (data) => {
