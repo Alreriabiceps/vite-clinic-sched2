@@ -3663,15 +3663,15 @@ export default function Appointments() {
             </Card>
           )}
 
-          {/* Pagination Controls - Only show for list view */}
-          {viewMode === "list" && visibleAppointments.length > itemsPerPage && (
+          {/* Pagination Controls - Show for table and list views */}
+          {(viewMode === "table" || viewMode === "list") && sortedAppointments.length > itemsPerPage && (
             <Card className="bg-off-white border border-soft-olive-200 shadow-sm">
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">
                   <div className="text-sm text-muted-gold">
                     Showing {startIndex + 1}-
-                    {Math.min(endIndex, visibleAppointments.length)} of{" "}
-                    {visibleAppointments.length} appointments
+                    {Math.min(endIndex, sortedAppointments.length)} of{" "}
+                    {sortedAppointments.length} appointments
                   </div>
                   <div className="flex items-center gap-2">
                     <Button

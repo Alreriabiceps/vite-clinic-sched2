@@ -20,6 +20,7 @@ export default function PatientBookAppointment() {
   const { patient, loading: authLoading } = usePatientAuth();
   const [doctors, setDoctors] = useState([]);
   const [availableSlots, setAvailableSlots] = useState([]);
+  const [slotsWithCounts, setSlotsWithCounts] = useState([]);
   const [availableDates, setAvailableDates] = useState([]);
   const [loading, setLoading] = useState(true);
   const [bookingLoading, setBookingLoading] = useState(false);
@@ -79,8 +80,34 @@ export default function PatientBookAppointment() {
       fetchAvailableSlots();
     } else {
       setAvailableSlots([]);
+      setSlotsWithCounts([]);
       setSelectedSlot('');
     }
+  }, [selectedDoctor, selectedDate]);
+
+  // Listen for clinic settings updates to refresh available dates
+  useEffect(() => {
+    const handleSettingsUpdated = () => {
+      // Refresh available dates when settings are updated
+      if (selectedDoctor) {
+        fetchAvailableDates();
+        if (selectedDate) {
+          fetchAvailableSlots();
+        }
+      }
+    };
+
+    window.addEventListener('clinicSettingsUpdated', handleSettingsUpdated);
+    window.addEventListener('storage', (e) => {
+      if (e.key === 'clinic_settings') {
+        handleSettingsUpdated();
+      }
+    });
+
+    return () => {
+      window.removeEventListener('clinicSettingsUpdated', handleSettingsUpdated);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedDoctor, selectedDate]);
 
   const checkExistingAppointments = async () => {
@@ -152,13 +179,21 @@ export default function PatientBookAppointment() {
         date: selectedDate
       });
       const data = extractData(response);
-      setAvailableSlots(data.slots || []);
+      // Use new format with counts if available, otherwise fallback to old format
+      if (data.slotsWithCounts) {
+        setSlotsWithCounts(data.slotsWithCounts);
+        setAvailableSlots(data.slotsWithCounts.map(s => s.time));
+      } else {
+        setAvailableSlots(data.slots || []);
+        setSlotsWithCounts((data.slots || []).map(slot => ({ time: slot, scheduledCount: 0 })));
+      }
     } catch (error) {
       // Suppress CanceledError (expected from request throttling)
       if (error?.code !== 'ERR_CANCELED' && error?.name !== 'CanceledError' && !error?.silent) {
         console.error('Error fetching slots:', error);
         toast.error('Failed to load available time slots');
         setAvailableSlots([]);
+        setSlotsWithCounts([]);
       }
     }
   };
@@ -685,20 +720,44 @@ export default function PatientBookAppointment() {
                     </label>
                     {availableSlots.length > 0 ? (
                       <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                        {availableSlots.map((slot, index) => (
-                          <button
-                            key={index}
-                            type="button"
-                            onClick={() => setSelectedSlot(slot)}
-                            className={`p-3 text-sm border rounded-lg transition-colors ${
-                              selectedSlot === slot
-                                ? 'border-clinic-600 bg-clinic-50 text-clinic-600'
-                                : 'border-gray-200 hover:border-gray-300'
-                            }`}
-                          >
-                            {slot}
-                          </button>
-                        ))}
+                        {slotsWithCounts.length > 0 ? (
+                          // Use slots with counts if available
+                          slotsWithCounts.map((slotData, index) => (
+                            <button
+                              key={index}
+                              type="button"
+                              onClick={() => setSelectedSlot(slotData.time)}
+                              className={`p-3 text-sm border rounded-lg transition-colors relative ${
+                                selectedSlot === slotData.time
+                                  ? 'border-clinic-600 bg-clinic-50 text-clinic-600'
+                                  : 'border-gray-200 hover:border-gray-300'
+                              }`}
+                            >
+                              <div className="font-medium">{slotData.time}</div>
+                              {slotData.scheduledCount > 0 && (
+                                <div className="text-xs text-orange-600 mt-1 font-semibold">
+                                  {slotData.scheduledCount} {slotData.scheduledCount === 1 ? 'person' : 'people'} booked
+                                </div>
+                              )}
+                            </button>
+                          ))
+                        ) : (
+                          // Fallback to simple slots
+                          availableSlots.map((slot, index) => (
+                            <button
+                              key={index}
+                              type="button"
+                              onClick={() => setSelectedSlot(slot)}
+                              className={`p-3 text-sm border rounded-lg transition-colors ${
+                                selectedSlot === slot
+                                  ? 'border-clinic-600 bg-clinic-50 text-clinic-600'
+                                  : 'border-gray-200 hover:border-gray-300'
+                              }`}
+                            >
+                              {slot}
+                            </button>
+                          ))
+                        )}
                       </div>
                     ) : (
                       <p className="text-gray-500 text-sm">No available slots for this date</p>

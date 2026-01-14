@@ -3,6 +3,9 @@ import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Heart, ArrowLeft, Eye, EyeOff } from 'lucide-react';
 
+const REMEMBER_ME_KEY = 'patient_remember_me';
+const REMEMBERED_CREDENTIALS_KEY = 'patient_remembered_credentials';
+
 export default function PatientLogin() {
   const navigate = useNavigate();
   const { login, patient, loading } = usePatientAuth();
@@ -21,18 +24,23 @@ export default function PatientLogin() {
     }
   }, [patient, loading, navigate]);
 
-  // Load saved credentials on mount
+  // Load remembered credentials on mount
   useEffect(() => {
-    const savedEmail = localStorage.getItem('patient_remembered_email');
-    const savedPassword = localStorage.getItem('patient_remembered_password');
-    const rememberMeChecked = localStorage.getItem('patient_remember_me') === 'true';
-    
-    if (rememberMeChecked && savedEmail && savedPassword) {
-      setFormData({
-        email: savedEmail,
-        password: savedPassword
-      });
-      setRememberMe(true);
+    const remembered = localStorage.getItem(REMEMBER_ME_KEY) === 'true';
+    if (remembered) {
+      const savedCredentials = localStorage.getItem(REMEMBERED_CREDENTIALS_KEY);
+      if (savedCredentials) {
+        try {
+          const parsed = JSON.parse(savedCredentials);
+          setFormData({
+            email: parsed.email || '',
+            password: parsed.password || ''
+          });
+          setRememberMe(true);
+        } catch (e) {
+          console.error('Error loading remembered credentials:', e);
+        }
+      }
     }
   }, []);
 
@@ -83,18 +91,18 @@ export default function PatientLogin() {
     const result = await login(formData);
     
     if (result.success) {
-      // Save credentials if remember me is checked
+      // Save credentials if "Remember Me" is checked
       if (rememberMe) {
-        localStorage.setItem('patient_remembered_email', formData.email);
-        localStorage.setItem('patient_remembered_password', formData.password);
-        localStorage.setItem('patient_remember_me', 'true');
+        localStorage.setItem(REMEMBER_ME_KEY, 'true');
+        localStorage.setItem(REMEMBERED_CREDENTIALS_KEY, JSON.stringify({
+          email: formData.email,
+          password: formData.password
+        }));
       } else {
-        // Clear saved credentials if remember me is unchecked
-        localStorage.removeItem('patient_remembered_email');
-        localStorage.removeItem('patient_remembered_password');
-        localStorage.removeItem('patient_remember_me');
+        // Clear saved credentials if "Remember Me" is unchecked
+        localStorage.removeItem(REMEMBER_ME_KEY);
+        localStorage.removeItem(REMEMBERED_CREDENTIALS_KEY);
       }
-      
       navigate('/patient/dashboard');
     }
   };
@@ -171,16 +179,16 @@ export default function PatientLogin() {
 
               <div className="flex items-center space-x-2">
                 <Checkbox
-                  id="remember-me"
+                  id="rememberMe"
                   checked={rememberMe}
-                  onCheckedChange={(checked) => setRememberMe(checked)}
+                  onCheckedChange={(checked) => setRememberMe(checked === true)}
                   disabled={loading}
                 />
                 <label
-                  htmlFor="remember-me"
+                  htmlFor="rememberMe"
                   className="text-sm font-medium text-charcoal cursor-pointer select-none"
                 >
-                  Remember password
+                  Remember me
                 </label>
               </div>
 

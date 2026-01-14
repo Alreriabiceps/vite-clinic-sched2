@@ -109,8 +109,15 @@ export default function PatientDashboard() {
     // Remove /api suffix if present to get the root URL for socket.io
     const socketUrl = apiUrl.replace(/\/api\/?$/, '');
 
-    // Connect to socket server
-    socketRef.current = io(socketUrl);
+    // Connect to socket server with error handling
+    socketRef.current = io(socketUrl, {
+      reconnection: true,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 5000,
+      reconnectionAttempts: 5,
+      timeout: 20000,
+      transports: ['polling', 'websocket']
+    });
 
     socketRef.current.on('connect', () => {
       console.log('Connected to socket server');
@@ -125,6 +132,34 @@ export default function PatientDashboard() {
       // The event data contains `patientName` but not `patientUserId`.
       // I should have included `patientUserId` in the event data to filter securely.
       // But for now, let's just listen and refresh.
+    });
+
+    socketRef.current.on('connect_error', (error) => {
+      // Only log connection errors in development, and only once
+      if (import.meta.env.DEV) {
+        console.debug('Socket.io connection error (backend may be offline):', error.message);
+      }
+    });
+
+    socketRef.current.on('disconnect', (reason) => {
+      // Only log unexpected disconnects
+      if (reason !== 'io client disconnect') {
+        console.debug('Socket.io disconnected:', reason);
+      }
+    });
+
+    socketRef.current.on('reconnect_attempt', (attemptNumber) => {
+      // Silently attempt reconnection (only log in development if needed)
+      if (import.meta.env.DEV && attemptNumber <= 1) {
+        console.debug('Attempting to reconnect to socket server...');
+      }
+    });
+
+    socketRef.current.on('reconnect_failed', () => {
+      // Only log in development
+      if (import.meta.env.DEV) {
+        console.debug('Socket.io reconnection failed. Backend server may be offline.');
+      }
     });
 
     const handleSocketEvent = (data) => {
