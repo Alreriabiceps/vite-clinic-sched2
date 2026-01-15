@@ -288,9 +288,7 @@ const PatientDetail = () => {
   const [activeTab, setActiveTab] = useState("overview");
   const [clinicSettings, setClinicSettings] = useState(null);
   const [printSelectionModalOpen, setPrintSelectionModalOpen] = useState(false);
-  const [selectedConsultations, setSelectedConsultations] = useState([]);
-  const [selectedImmunizations, setSelectedImmunizations] = useState([]);
-  const [printAllRecords, setPrintAllRecords] = useState(true);
+  const [selectedRecord, setSelectedRecord] = useState(null); // { type: 'consultation' | 'immunization', index: number }
 
   // Modal states
   const [editModalOpen, setEditModalOpen] = useState(false);
@@ -313,6 +311,7 @@ const PatientDetail = () => {
     reasonForVisit: "",
   });
   const [unlocking, setUnlocking] = useState(false);
+  const [locking, setLocking] = useState(false);
 
   const deriveDoctorName = (p, appts) => {
     if (!p) return "Dr. Maria Sarah L. Manaloto";
@@ -520,6 +519,21 @@ const PatientDetail = () => {
     setDiagnosisValue("");
   };
 
+  const handleLockAppointments = async () => {
+    if (!patient) return;
+    try {
+      setLocking(true);
+      await patientsAPI.lockAppointments(patient._id);
+      toast.success("Appointment booking locked for this patient");
+      await fetchPatientData();
+    } catch (error) {
+      console.error("Error locking appointments:", error);
+      toast.error("Failed to lock appointments");
+    } finally {
+      setLocking(false);
+    }
+  };
+
   const handleUnlockAppointments = async () => {
     if (!patient) return;
     try {
@@ -609,40 +623,32 @@ const PatientDetail = () => {
     const clinicPhone = clinicSettings?.phone || "";
     const clinicEmail = clinicSettings?.email || "";
 
-    let consultations =
-      patient.patientType === "ob-gyne"
-        ? patient.obGyneRecord?.consultations || []
-        : patient.pediatricRecord?.consultations || [];
-
-    // Get immunizations using the same logic as getImmunizations()
+    let consultations = [];
     let immunizations = [];
-    if (patient.patientType === "pediatric") {
-      const records = patient.pediatricRecord?.immunizationRecords;
-      if (records && Array.isArray(records)) {
-        immunizations = records;
-      } else {
-        // Fallback: check if immunizations exists and is an array
-        const oldRecords = patient.pediatricRecord?.immunizations;
-        immunizations = Array.isArray(oldRecords) ? oldRecords : [];
-      }
-    }
 
-    // Filter based on selection if not printing all
-    if (!printAllRecords) {
-      if (selectedConsultations.length > 0) {
-        consultations = consultations.filter((_, idx) => 
-          selectedConsultations.includes(consultations.length - 1 - idx)
-        );
-      } else {
-        consultations = [];
-      }
-      
-      if (selectedImmunizations.length > 0) {
-        immunizations = immunizations.filter((_, idx) => 
-          selectedImmunizations.includes(immunizations.length - 1 - idx)
-        );
-      } else {
-        immunizations = [];
+    // Filter based on selected record
+    if (selectedRecord) {
+      if (selectedRecord.type === 'consultation') {
+        const allConsultations = patient.patientType === "ob-gyne"
+          ? patient.obGyneRecord?.consultations || []
+          : patient.pediatricRecord?.consultations || [];
+        
+        if (allConsultations[selectedRecord.index]) {
+          consultations = [allConsultations[selectedRecord.index]];
+        }
+      } else if (selectedRecord.type === 'immunization') {
+        const records = patient.pediatricRecord?.immunizationRecords;
+        let allImmunizations = [];
+        if (records && Array.isArray(records)) {
+          allImmunizations = records;
+        } else {
+          const oldRecords = patient.pediatricRecord?.immunizations;
+          allImmunizations = Array.isArray(oldRecords) ? oldRecords : [];
+        }
+        
+        if (allImmunizations[selectedRecord.index]) {
+          immunizations = [allImmunizations[selectedRecord.index]];
+        }
       }
     }
 
@@ -1301,7 +1307,7 @@ const PatientDetail = () => {
             <Edit className="h-4 w-4" />
             <span>Edit Patient</span>
           </Button>
-          {isBookingLocked && (
+          {isBookingLocked ? (
             <Button
               variant="clinic"
               onClick={handleUnlockAppointments}
@@ -1315,6 +1321,20 @@ const PatientDetail = () => {
               )}
               <span>Unlock Appointment</span>
             </Button>
+          ) : (
+            <Button
+              variant="outline"
+              onClick={handleLockAppointments}
+              disabled={locking}
+              className="flex items-center space-x-2 text-orange-600 hover:text-orange-700 hover:border-orange-300"
+            >
+              {locking ? (
+                <LoadingSpinner size="sm" />
+              ) : (
+                <Lock className="h-4 w-4" />
+              )}
+              <span>Lock Appointment</span>
+            </Button>
           )}
           <Button
             variant="outline"
@@ -1327,31 +1347,69 @@ const PatientDetail = () => {
         </div>
       </div>
 
-      {isBookingLocked && (
-        <div className="p-4 border border-red-200 bg-red-50 rounded-lg flex items-start gap-3">
-          <div className="p-2 bg-red-100 rounded-full">
+      {/* Appointment Lock Status Banner - Always Visible */}
+      <div className={`p-4 border rounded-lg flex items-start gap-3 ${
+        isBookingLocked 
+          ? 'border-red-200 bg-red-50' 
+          : 'border-green-200 bg-green-50'
+      }`}>
+        <div className={`p-2 rounded-full ${
+          isBookingLocked 
+            ? 'bg-red-100' 
+            : 'bg-green-100'
+        }`}>
+          {isBookingLocked ? (
             <Lock className="h-4 w-4 text-red-600" />
-          </div>
-          <div className="flex-1">
-            <p className="font-semibold text-red-800">
-              Booking locked after {noShowCount} no-shows.
-            </p>
-            <p className="text-sm text-red-700">
-              This patient cannot book new appointments until unlocked.
-            </p>
-          </div>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={handleUnlockAppointments}
-            disabled={unlocking}
-            className="text-red-700 border-red-200 hover:bg-red-100"
-          >
-            {unlocking ? <LoadingSpinner size="sm" /> : <Unlock className="h-4 w-4 mr-1" />}
-            Unlock
-          </Button>
+          ) : (
+            <Unlock className="h-4 w-4 text-green-600" />
+          )}
         </div>
-      )}
+        <div className="flex-1">
+          {isBookingLocked ? (
+            <>
+              <p className="font-semibold text-red-800">
+                Booking Locked
+                {noShowCount > 0 && ` (${noShowCount} no-show${noShowCount !== 1 ? 's' : ''})`}
+              </p>
+              <p className="text-sm text-red-700">
+                This patient cannot book new appointments until unlocked.
+              </p>
+            </>
+          ) : (
+            <>
+              <p className="font-semibold text-green-800">
+                Booking Unlocked
+                {noShowCount > 0 && ` (${noShowCount} no-show${noShowCount !== 1 ? 's' : ''} recorded)`}
+              </p>
+              <p className="text-sm text-green-700">
+                This patient can book new appointments.
+              </p>
+            </>
+          )}
+        </div>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={isBookingLocked ? handleUnlockAppointments : handleLockAppointments}
+          disabled={isBookingLocked ? unlocking : locking}
+          className={isBookingLocked 
+            ? 'text-red-700 border-red-200 hover:bg-red-100' 
+            : 'text-orange-700 border-orange-200 hover:bg-orange-100'
+          }
+        >
+          {isBookingLocked ? (
+            <>
+              {unlocking ? <LoadingSpinner size="sm" /> : <Unlock className="h-4 w-4 mr-1" />}
+              Unlock
+            </>
+          ) : (
+            <>
+              {locking ? <LoadingSpinner size="sm" /> : <Lock className="h-4 w-4 mr-1" />}
+              Lock
+            </>
+          )}
+        </Button>
+      </div>
 
       {/* Tabs */}
       <div className="border-b border-gray-200">
@@ -1756,30 +1814,10 @@ const PatientDetail = () => {
         <Dialog open={printSelectionModalOpen} onOpenChange={setPrintSelectionModalOpen}>
           <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
             <DialogHeader>
-              <DialogTitle>Select Medical Records to Print</DialogTitle>
+              <DialogTitle>Select a Medical Record to Print</DialogTitle>
             </DialogHeader>
             <div className="space-y-6 py-4">
-              {/* Print All Option */}
-              <div className="flex items-center space-x-2">
-                <input
-                  type="checkbox"
-                  id="printAll"
-                  checked={printAllRecords}
-                  onChange={(e) => {
-                    setPrintAllRecords(e.target.checked);
-                    if (e.target.checked) {
-                      setSelectedConsultations([]);
-                      setSelectedImmunizations([]);
-                    }
-                  }}
-                  className="w-4 h-4"
-                />
-                <label htmlFor="printAll" className="text-sm font-medium cursor-pointer">
-                  Print All Medical Records
-                </label>
-              </div>
-
-              {!printAllRecords && (() => {
+              {(() => {
                 const consultationsList =
                   patient.patientType === "ob-gyne"
                     ? patient.obGyneRecord?.consultations || []
@@ -1807,18 +1845,16 @@ const PatientDetail = () => {
                         <div className="space-y-2 max-h-48 overflow-y-auto border rounded p-3">
                           {consultationsList.slice().reverse().map((consultation, idx) => {
                             const originalIdx = consultationsList.length - 1 - idx;
+                            const isSelected = selectedRecord?.type === 'consultation' && selectedRecord?.index === originalIdx;
                             return (
                               <div key={idx} className="flex items-center space-x-2">
                                 <input
-                                  type="checkbox"
+                                  type="radio"
                                   id={`consultation-${idx}`}
-                                  checked={selectedConsultations.includes(originalIdx)}
-                                  onChange={(e) => {
-                                    if (e.target.checked) {
-                                      setSelectedConsultations([...selectedConsultations, originalIdx]);
-                                    } else {
-                                      setSelectedConsultations(selectedConsultations.filter(i => i !== originalIdx));
-                                    }
+                                  name="record-selection"
+                                  checked={isSelected}
+                                  onChange={() => {
+                                    setSelectedRecord({ type: 'consultation', index: originalIdx });
                                   }}
                                   className="w-4 h-4"
                                 />
@@ -1840,18 +1876,16 @@ const PatientDetail = () => {
                         <div className="space-y-2 max-h-48 overflow-y-auto border rounded p-3">
                           {immunizationsList.slice().reverse().map((immunization, idx) => {
                             const originalIdx = immunizationsList.length - 1 - idx;
+                            const isSelected = selectedRecord?.type === 'immunization' && selectedRecord?.index === originalIdx;
                             return (
                               <div key={idx} className="flex items-center space-x-2">
                                 <input
-                                  type="checkbox"
+                                  type="radio"
                                   id={`immunization-${idx}`}
-                                  checked={selectedImmunizations.includes(originalIdx)}
-                                  onChange={(e) => {
-                                    if (e.target.checked) {
-                                      setSelectedImmunizations([...selectedImmunizations, originalIdx]);
-                                    } else {
-                                      setSelectedImmunizations(selectedImmunizations.filter(i => i !== originalIdx));
-                                    }
+                                  name="record-selection"
+                                  checked={isSelected}
+                                  onChange={() => {
+                                    setSelectedRecord({ type: 'immunization', index: originalIdx });
                                   }}
                                   className="w-4 h-4"
                                 />
@@ -1878,16 +1912,14 @@ const PatientDetail = () => {
                 variant="outline"
                 onClick={() => {
                   setPrintSelectionModalOpen(false);
-                  setPrintAllRecords(true);
-                  setSelectedConsultations([]);
-                  setSelectedImmunizations([]);
+                  setSelectedRecord(null);
                 }}
               >
                 Cancel
               </Button>
               <Button
                 onClick={handlePrintSelectedRecords}
-                disabled={!printAllRecords && selectedConsultations.length === 0 && selectedImmunizations.length === 0}
+                disabled={!selectedRecord}
                 className="bg-blue-600 hover:bg-blue-700"
               >
                 <Printer className="h-4 w-4 mr-2" />

@@ -31,7 +31,22 @@ export default function PatientProfile() {
       city: '',
       province: '',
       zipCode: ''
-    }
+    },
+    emergencyContact: {
+      name: '',
+      relationship: '',
+      phoneNumber: ''
+    },
+    // OB-GYNE specific fields
+    occupation: '',
+    civilStatus: '',
+    religion: '',
+    referredBy: '',
+    // Pediatric specific fields
+    nameOfMother: '',
+    nameOfFather: '',
+    birthWeight: '',
+    birthLength: ''
   });
   
   // Password change form state
@@ -66,7 +81,22 @@ export default function PatientProfile() {
           city: patient.address?.city || '',
           province: patient.address?.province || '',
           zipCode: patient.address?.zipCode || ''
-        }
+        },
+        emergencyContact: {
+          name: patient.emergencyContact?.name || '',
+          relationship: patient.emergencyContact?.relationship || '',
+          phoneNumber: patient.emergencyContact?.phoneNumber || ''
+        },
+        // OB-GYNE specific fields
+        occupation: patient.occupation || '',
+        civilStatus: patient.civilStatus || '',
+        religion: patient.religion || '',
+        referredBy: patient.referredBy || '',
+        // Pediatric specific fields
+        nameOfMother: patient.nameOfMother || '',
+        nameOfFather: patient.nameOfFather || '',
+        birthWeight: patient.birthWeight || '',
+        birthLength: patient.birthLength || ''
       });
     }
   }, [patient, authLoading, navigate]);
@@ -159,6 +189,16 @@ export default function PatientProfile() {
       ...prev,
       address: {
         ...prev.address,
+        [field]: value
+      }
+    }));
+  };
+
+  const handleEmergencyContactChange = (field, value) => {
+    setProfileForm(prev => ({
+      ...prev,
+      emergencyContact: {
+        ...prev.emergencyContact,
         [field]: value
       }
     }));
@@ -354,6 +394,166 @@ export default function PatientProfile() {
                 </div>
               </CardContent>
             </Card>
+
+            {/* Emergency Contact Information */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Phone className="h-5 w-5 text-clinic-600" />
+                  Emergency Contact
+                </CardTitle>
+                <CardDescription>
+                  Update your emergency contact information
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div>
+                  <Label htmlFor="emergencyContactName">Emergency Contact Name</Label>
+                  <Input
+                    id="emergencyContactName"
+                    value={profileForm.emergencyContact.name}
+                    onChange={(e) => handleEmergencyContactChange('name', e.target.value)}
+                    placeholder="Enter emergency contact name"
+                  />
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="emergencyContactRelationship">Relationship</Label>
+                    <Input
+                      id="emergencyContactRelationship"
+                      value={profileForm.emergencyContact.relationship}
+                      onChange={(e) => handleEmergencyContactChange('relationship', e.target.value)}
+                      placeholder="e.g., Spouse, Parent, Sibling"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="emergencyContactPhone">Phone Number</Label>
+                    <Input
+                      id="emergencyContactPhone"
+                      value={profileForm.emergencyContact.phoneNumber}
+                      onChange={(e) => handleEmergencyContactChange('phoneNumber', e.target.value)}
+                      placeholder="Enter emergency contact phone"
+                    />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* OB-GYNE Specific Fields */}
+            {patient?.patientRecord?.patientType === 'ob-gyne' && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Heart className="h-5 w-5 text-clinic-600" />
+                    Additional Information (OB-GYNE)
+                  </CardTitle>
+                  <CardDescription>
+                    Update your additional personal information
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div>
+                    <Label htmlFor="occupation">Occupation</Label>
+                    <Input
+                      id="occupation"
+                      value={profileForm.occupation}
+                      onChange={(e) => handleProfileInputChange('occupation', e.target.value)}
+                      placeholder="Enter your occupation"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="civilStatus">Civil Status</Label>
+                    <select
+                      id="civilStatus"
+                      value={profileForm.civilStatus}
+                      onChange={(e) => handleProfileInputChange('civilStatus', e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-clinic-600"
+                    >
+                      <option value="">Select civil status</option>
+                      <option value="Single">Single</option>
+                      <option value="Married">Married</option>
+                      <option value="Divorced">Divorced</option>
+                      <option value="Widowed">Widowed</option>
+                    </select>
+                  </div>
+                  <div>
+                    <Label htmlFor="religion">Religion</Label>
+                    <Input
+                      id="religion"
+                      value={profileForm.religion}
+                      onChange={(e) => handleProfileInputChange('religion', e.target.value)}
+                      placeholder="Enter your religion"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="referredBy">Referred By</Label>
+                    <Input
+                      id="referredBy"
+                      value={profileForm.referredBy}
+                      onChange={(e) => handleProfileInputChange('referredBy', e.target.value)}
+                      placeholder="Enter who referred you"
+                    />
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Pediatric Specific Fields */}
+            {patient?.patientRecord?.patientType === 'pediatric' && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Baby className="h-5 w-5 text-clinic-600" />
+                    Additional Information (Pediatric)
+                  </CardTitle>
+                  <CardDescription>
+                    Update additional information for the pediatric patient
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <Label htmlFor="nameOfMother">Mother's Name</Label>
+                      <Input
+                        id="nameOfMother"
+                        value={profileForm.nameOfMother}
+                        onChange={(e) => handleProfileInputChange('nameOfMother', e.target.value)}
+                        placeholder="Enter mother's name"
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="nameOfFather">Father's Name</Label>
+                      <Input
+                        id="nameOfFather"
+                        value={profileForm.nameOfFather}
+                        onChange={(e) => handleProfileInputChange('nameOfFather', e.target.value)}
+                        placeholder="Enter father's name"
+                      />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <Label htmlFor="birthWeight">Birth Weight</Label>
+                      <Input
+                        id="birthWeight"
+                        value={profileForm.birthWeight}
+                        onChange={(e) => handleProfileInputChange('birthWeight', e.target.value)}
+                        placeholder="Enter birth weight"
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="birthLength">Birth Length</Label>
+                      <Input
+                        id="birthLength"
+                        value={profileForm.birthLength}
+                        onChange={(e) => handleProfileInputChange('birthLength', e.target.value)}
+                        placeholder="Enter birth length"
+                      />
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
 
             <div className="flex justify-end">
               <Button type="submit" disabled={loading}>

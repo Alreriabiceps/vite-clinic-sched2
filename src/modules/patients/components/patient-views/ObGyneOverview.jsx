@@ -43,7 +43,9 @@ export const ObGyneOverview = ({ patient }) => {
           <InfoItem label="Civil Status" value={record.civilStatus} />
           <InfoItem label="Religion" value={record.religion} />
           <InfoItem label="Referred By" value={record.referredBy} />
-          <InfoItem label="Emergency Contact" value={`${record.emergencyContact?.name} (${record.emergencyContact?.contactNumber})`} />
+          <InfoItem label="Emergency Contact" value={patient.contactInfo?.emergencyContact?.name && patient.contactInfo?.emergencyContact?.phone 
+            ? `${patient.contactInfo.emergencyContact.name} (${patient.contactInfo.emergencyContact.phone})` 
+            : 'N/A'} />
         </CardContent>
       </Card>
 

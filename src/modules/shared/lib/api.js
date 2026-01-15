@@ -393,6 +393,7 @@ export const patientsAPI = {
   updateConsultation: (patientId, consultationId, data) => api.put(`/patients/${patientId}/consultations/${consultationId}`, data),
   deleteConsultation: (patientId, consultationId) => api.delete(`/patients/${patientId}/consultations/${consultationId}`),
   addNote: (patientId, data) => api.post(`/patients/${patientId}/notes`, data),
+  lockAppointments: (patientId) => api.patch(`/patients/${patientId}/lock-appointments`),
   unlockAppointments: (patientId) => api.patch(`/patients/${patientId}/unlock-appointments`),
 };
 
