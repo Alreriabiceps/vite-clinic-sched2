@@ -2753,74 +2753,6 @@ export default function Appointments() {
 
               <div className="flex h-[700px]">
                 <div className="hidden md:block w-60 border-r p-4 bg-white overflow-y-auto">
-                  <div className="mb-4">
-                    <div className="text-xs font-medium uppercase tracking-wide text-gray-500 mb-2">
-                      Doctors
-                    </div>
-                    <div className="space-y-2">
-                      {dynamicDoctorNames.map((doctor) => (
-                        <div key={doctor} className="flex items-center">
-                          <input
-                            type="checkbox"
-                            id={doctor}
-                            name="doctorFilter"
-                            checked={(() => {
-                              // Check if any appointment doctor name in filter maps to this doctor
-                              if (doctorFilter.length === 0) return false;
-                              return doctorFilter.some((filterName) => {
-                                const mappedFilterName =
-                                  mapDoctorNameToSettings(filterName);
-                                return mappedFilterName === doctor;
-                              });
-                            })()}
-                            onChange={() => handleDoctorFilterChange(doctor)}
-                            className="h-4 w-4 rounded border-gray-300 text-clinic-600 focus:ring-clinic-500 cursor-pointer"
-                          />
-                          <label
-                            htmlFor={doctor}
-                            className="ml-2 text-sm text-gray-700 cursor-pointer"
-                          >
-                            {doctor.startsWith("Dr. ")
-                              ? "Dr. " +
-                              doctor
-                                .replace("Dr. ", "")
-                                .split(" ")
-                                .slice(0, 2)
-                                .join(" ")
-                              : "Dr. " +
-                              doctor.split(" ").slice(0, 2).join(" ")}
-                          </label>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                  <div className="mb-4">
-                    <div className="text-xs font-medium uppercase tracking-wide text-gray-500 mb-2">
-                      Upcoming Holidays
-                    </div>
-                    <div className="space-y-2 text-sm">
-                      {holidays
-                        .filter((h) => new Date(h.start) >= new Date())
-                        .slice(0, 5)
-                        .map((holiday, idx) => (
-                          <div
-                            key={idx}
-                            className="flex items-center text-xs py-1 border-b border-gray-100"
-                          >
-                            <div className="w-2 h-2 rounded-full bg-red-400 mr-2"></div>
-                            <div className="flex flex-col">
-                              <span className="font-medium">
-                                {holiday.title}
-                              </span>
-                              <span className="text-gray-500">
-                                {format(new Date(holiday.start), "EEE, MMM d")}
-                              </span>
-                            </div>
-                          </div>
-                        ))}
-                    </div>
-                  </div>
-
                   <div>
                     <div className="text-xs font-medium uppercase tracking-wide text-gray-500 mb-2">
                       Quick Actions
@@ -2834,29 +2766,6 @@ export default function Appointments() {
                       >
                         <Plus className="h-3.5 w-3.5 mr-2" />
                         New Appointment
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="w-full justify-start text-left"
-                        onClick={() => {
-                          // Toggle to show today's appointments only
-                          if (dateRange === "all") {
-                            setDateRange("today");
-                          } else {
-                            setDateRange("all");
-                          }
-                          toast.info(
-                            dateRange === "today"
-                              ? "Showing all appointments"
-                              : "Showing today's appointments"
-                          );
-                        }}
-                      >
-                        <Filter className="h-3.5 w-3.5 mr-2" />
-                        {dateRange === "all"
-                          ? "Today Only"
-                          : "All Appointments"}
                       </Button>
                     </div>
                   </div>
