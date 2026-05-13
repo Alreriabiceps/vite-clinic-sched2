@@ -23,16 +23,32 @@ const useAuthStore = create((set, get) => ({
         return;
       }
 
-      const response = await authAPI.getProfile();
-      const userData = extractData(response);
-
-      set({
-        user: userData.user,
-        loading: false,
-        error: null,
-      });
+      // Retry: hosted APIs (e.g. Render cold start) often fail the first request; that used to wipe the session.
+      let lastError;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          const response = await authAPI.getProfile();
+          const userData = extractData(response);
+          set({
+            user: userData.user,
+            loading: false,
+            error: null,
+          });
+          return;
+        } catch (err) {
+          lastError = err;
+          const status = err.response?.status;
+          if (status === 401 || status === 403) {
+            break;
+          }
+          if (attempt < 2) {
+            await new Promise((r) => setTimeout(r, 400 * (attempt + 1)));
+          }
+        }
+      }
+      throw lastError;
     } catch (error) {
-      // Only log unexpected errors (not 401 which is expected for invalid/expired tokens)
+      // Only log unexpected errors (not 401/403 which are expected for invalid/expired tokens)
       if (error.response?.status !== 401 && error.response?.status !== 403) {
         console.error("Auth initialization error:", error);
       }

@@ -10,6 +10,75 @@ const API_BASE_URL = import.meta.env.VITE_API_URL ||
 const normalizedURL = API_BASE_URL.endsWith('/api') ? API_BASE_URL : `${API_BASE_URL}/api`;
 const FINAL_API_URL = normalizedURL;
 
+const getResponseData = (response) => response.data?.data || response.data;
+
+let staffRefreshPromise = null;
+let patientRefreshPromise = null;
+
+const clearStaffSession = () => {
+  localStorage.removeItem('clinic_token');
+  localStorage.removeItem('clinic_refresh_token');
+};
+
+const clearPatientSession = () => {
+  localStorage.removeItem('patient_token');
+  localStorage.removeItem('patient_refresh_token');
+};
+
+const isExpiredTokenError = (error) =>
+  error.response?.status === 403 &&
+  error.response?.data?.message === 'Invalid or expired token';
+
+const refreshStaffSession = async () => {
+  const refreshToken = localStorage.getItem('clinic_refresh_token');
+  if (!refreshToken) {
+    throw new Error('Missing staff refresh token');
+  }
+
+  if (!staffRefreshPromise) {
+    staffRefreshPromise = axios
+      .post(`${FINAL_API_URL}/auth/refresh`, { refreshToken })
+      .then((response) => {
+        const data = getResponseData(response);
+        localStorage.setItem('clinic_token', data.token);
+        if (data.refreshToken) {
+          localStorage.setItem('clinic_refresh_token', data.refreshToken);
+        }
+        return data.token;
+      })
+      .finally(() => {
+        staffRefreshPromise = null;
+      });
+  }
+
+  return staffRefreshPromise;
+};
+
+const refreshPatientSession = async () => {
+  const refreshToken = localStorage.getItem('patient_refresh_token');
+  if (!refreshToken) {
+    throw new Error('Missing patient refresh token');
+  }
+
+  if (!patientRefreshPromise) {
+    patientRefreshPromise = axios
+      .post(`${FINAL_API_URL}/patient/auth/refresh`, { refreshToken })
+      .then((response) => {
+        const data = getResponseData(response);
+        localStorage.setItem('patient_token', data.token);
+        if (data.refreshToken) {
+          localStorage.setItem('patient_refresh_token', data.refreshToken);
+        }
+        return data.token;
+      })
+      .finally(() => {
+        patientRefreshPromise = null;
+      });
+  }
+
+  return patientRefreshPromise;
+};
+
 // ============================================================================
 // AGGRESSIVE RATE LIMITING - PREVENTS 429 ERRORS
 // ============================================================================
@@ -242,16 +311,35 @@ api.interceptors.response.use(
       });
     }
 
-    if (error.response?.status === 401) {
+    const isAuthError = error.response?.status === 401 || isExpiredTokenError(error);
+
+    if (isAuthError) {
       // Don't redirect if we're on patient routes or login pages
       const isLoginRequest = error.config?.url?.includes('/auth/login');
+      const isRefreshRequest = error.config?.url?.includes('/auth/refresh');
       const isOnLoginPage = window.location.pathname === '/login';
       const isOnPatientRoute = window.location.pathname.startsWith('/patient');
+      const hasRefreshToken = !!localStorage.getItem('clinic_refresh_token');
+
+      if (!isLoginRequest && !isRefreshRequest && !error.config?.__authRetry && hasRefreshToken) {
+        try {
+          const newToken = await refreshStaffSession();
+          error.config.__authRetry = true;
+          error.config.headers = error.config.headers || {};
+          error.config.headers.Authorization = `Bearer ${newToken}`;
+          return api.request(error.config);
+        } catch (refreshError) {
+          clearStaffSession();
+          if (!isOnLoginPage && !isOnPatientRoute) {
+            window.location.href = '/login';
+          }
+          return Promise.reject(refreshError);
+        }
+      }
       
       // Only redirect admin auth errors if we're NOT on patient routes
       if (!isLoginRequest && !isOnLoginPage && !isOnPatientRoute) {
-        localStorage.removeItem('clinic_token');
-        localStorage.removeItem('clinic_refresh_token');
+        clearStaffSession();
         window.location.href = '/login';
       }
     }
@@ -331,14 +419,33 @@ patientApi.interceptors.response.use(
       });
     }
 
-    if (error.response?.status === 401) {
+    const isAuthError = error.response?.status === 401 || isExpiredTokenError(error);
+
+    if (isAuthError) {
       // Don't redirect if we're already on the login page or if it's a login request
       const isLoginRequest = error.config?.url?.includes('/patient/auth/login');
+      const isRefreshRequest = error.config?.url?.includes('/patient/auth/refresh');
       const isOnLoginPage = window.location.pathname === '/patient/login';
+      const hasRefreshToken = !!localStorage.getItem('patient_refresh_token');
+      
+      if (!isLoginRequest && !isRefreshRequest && !error.config?.__authRetry && hasRefreshToken) {
+        try {
+          const newToken = await refreshPatientSession();
+          error.config.__authRetry = true;
+          error.config.headers = error.config.headers || {};
+          error.config.headers.Authorization = `Bearer ${newToken}`;
+          return patientApi.request(error.config);
+        } catch (refreshError) {
+          clearPatientSession();
+          if (!isOnLoginPage) {
+            window.location.href = '/patient/login';
+          }
+          return Promise.reject(refreshError);
+        }
+      }
       
       if (!isLoginRequest && !isOnLoginPage) {
-        localStorage.removeItem('patient_token');
-        localStorage.removeItem('patient_refresh_token');
+        clearPatientSession();
         window.location.href = '/patient/login';
       }
     }
@@ -442,6 +549,7 @@ export const handleAPIError = (error) => {
 export const patientAuthAPI = {
   register: (data) => patientApi.post('/patient/auth/register', data),
   login: (credentials) => patientApi.post('/patient/auth/login', credentials),
+  refreshToken: (refreshToken) => patientApi.post('/patient/auth/refresh', { refreshToken }),
   getProfile: () => patientApi.get('/patient/auth/profile'),
   updateProfile: (data) => patientApi.put('/patient/auth/profile', data),
   changePassword: (data) => patientApi.put('/patient/auth/change-password', data),
@@ -464,7 +572,7 @@ export const patientBookingAPI = {
 
 // Helper function to extract data from API response
 export const extractData = (response) => {
-  return response.data?.data || response.data;
+  return getResponseData(response);
 };
 
 export default api;
