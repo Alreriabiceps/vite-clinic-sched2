@@ -1,6 +1,6 @@
 import { Card, CardContent, CardHeader, CardTitle, Button, Input, useAuth, authAPI, settingsAPI, handleAPIError, extractData, toast } from '../../shared';
 import React, { useState, useEffect } from 'react';
-import { User, Mail, Calendar, Shield } from 'lucide-react';
+import { User, Mail, Calendar, Shield, Power } from 'lucide-react';
 
 const Settings = () => {
   const { user, updateUser } = useAuth();
@@ -26,6 +26,7 @@ const Settings = () => {
   // Clinic settings state
   const [clinicSettings, setClinicSettings] = useState({
     clinicName: 'VM Mother and Child Clinic',
+    bookingEnabled: true,
     obgyneDoctor: {
       name: 'Dr. Maria Sarah L. Manaloto',
       hours: {
@@ -62,9 +63,13 @@ const Settings = () => {
         const response = await settingsAPI.getClinicSettings();
         const data = extractData(response);
         if (data) {
-          setClinicSettings(data);
+          const normalizedSettings = {
+            ...data,
+            bookingEnabled: data.bookingEnabled !== false
+          };
+          setClinicSettings(prev => ({ ...prev, ...normalizedSettings }));
           // Also save to localStorage as backup
-          localStorage.setItem('clinic_settings', JSON.stringify(data));
+          localStorage.setItem('clinic_settings', JSON.stringify(normalizedSettings));
           return;
         }
       } catch (apiError) {
@@ -75,7 +80,12 @@ const Settings = () => {
       const savedSettings = localStorage.getItem('clinic_settings');
       if (savedSettings) {
         try {
-          setClinicSettings(JSON.parse(savedSettings));
+          const parsedSettings = JSON.parse(savedSettings);
+          setClinicSettings(prev => ({
+            ...prev,
+            ...parsedSettings,
+            bookingEnabled: parsedSettings.bookingEnabled !== false
+          }));
         } catch (error) {
           console.error('Error loading clinic settings:', error);
         }
@@ -264,6 +274,13 @@ const Settings = () => {
     }));
   };
 
+  const handleBookingAvailabilityChange = (enabled) => {
+    setClinicSettings(prev => ({
+      ...prev,
+      bookingEnabled: enabled
+    }));
+  };
+
   const handleDoctorHoursChange = (doctorType, day, field, value) => {
     setClinicSettings(prev => ({
       ...prev,
@@ -286,16 +303,14 @@ const Settings = () => {
     setClinicMessage('');
     
     try {
-      // Save to localStorage for now (can be replaced with API call later)
-      localStorage.setItem('clinic_settings', JSON.stringify(clinicSettings));
-      
-      // Try to save via API if endpoint exists
-      try {
-        await settingsAPI.updateClinicSettings(clinicSettings);
-      } catch (apiError) {
-        // API might not be implemented yet, that's okay
-        console.log('API endpoint not available, saved to localStorage');
-      }
+      const response = await settingsAPI.updateClinicSettings(clinicSettings);
+      const savedSettings = extractData(response) || clinicSettings;
+      const normalizedSettings = {
+        ...savedSettings,
+        bookingEnabled: savedSettings.bookingEnabled !== false
+      };
+      setClinicSettings(prev => ({ ...prev, ...normalizedSettings }));
+      localStorage.setItem('clinic_settings', JSON.stringify(normalizedSettings));
       
       // Dispatch custom event to notify other components of settings update
       window.dispatchEvent(new Event('clinicSettingsUpdated'));
@@ -309,19 +324,6 @@ const Settings = () => {
     } finally {
       setClinicLoading(false);
     }
-  };
-
-  const formatTimeForDisplay = (time24) => {
-    if (!time24) return '';
-    const [hours, minutes] = time24.split(':');
-    const hour = parseInt(hours);
-    const ampm = hour >= 12 ? 'PM' : 'AM';
-    const displayHour = hour % 12 || 12;
-    return `${displayHour}:${minutes} ${ampm}`;
-  };
-
-  const formatDayName = (day) => {
-    return day.charAt(0).toUpperCase() + day.slice(1);
   };
 
   const renderDoctorHours = (doctorType, doctorData) => {
@@ -379,6 +381,49 @@ const Settings = () => {
               onChange={(e) => setClinicSettings(prev => ({ ...prev, clinicName: e.target.value }))}
               required
             />
+          </div>
+
+          <div className={`rounded-lg border p-4 ${
+            clinicSettings.bookingEnabled !== false
+              ? 'border-green-200 bg-green-50'
+              : 'border-red-200 bg-red-50'
+          }`}>
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-start gap-3">
+                <div className={`rounded-full p-2 ${
+                  clinicSettings.bookingEnabled !== false
+                    ? 'bg-green-100 text-green-700'
+                    : 'bg-red-100 text-red-700'
+                }`}>
+                  <Power className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-900">Patient Booking Availability</h3>
+                  <p className={`text-sm ${
+                    clinicSettings.bookingEnabled !== false ? 'text-green-700' : 'text-red-700'
+                  }`}>
+                    {clinicSettings.bookingEnabled !== false
+                      ? 'Patients can book appointments online.'
+                      : 'Online patient booking is temporarily unavailable.'}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={clinicSettings.bookingEnabled !== false}
+                onClick={() => handleBookingAvailabilityChange(clinicSettings.bookingEnabled === false)}
+                className={`relative inline-flex h-7 w-14 shrink-0 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
+                  clinicSettings.bookingEnabled !== false ? 'bg-green-600' : 'bg-gray-400'
+                }`}
+              >
+                <span
+                  className={`inline-block h-6 w-6 transform rounded-full bg-white shadow transition-transform ${
+                    clinicSettings.bookingEnabled !== false ? 'translate-x-7' : 'translate-x-1'
+                  }`}
+                />
+              </button>
+            </div>
           </div>
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4 border-t">

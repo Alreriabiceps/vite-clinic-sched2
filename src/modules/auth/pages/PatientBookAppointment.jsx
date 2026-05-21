@@ -7,13 +7,14 @@ import {
   Clock, 
   User, 
   ArrowLeft,
-  Stethoscope,
   Baby,
   CheckCircle,
   MapPin,
   Phone,
   Lock
 } from 'lucide-react';
+
+const BOOKING_UNAVAILABLE_MESSAGE = 'Online appointment booking is temporarily unavailable due to a high volume of patients. Please contact the clinic for assistance.';
 
 export default function PatientBookAppointment() {
   const navigate = useNavigate();
@@ -29,6 +30,8 @@ export default function PatientBookAppointment() {
   const [selectedSlot, setSelectedSlot] = useState('');
   const [existingAppointment, setExistingAppointment] = useState(null);
   const [checkingAppointments, setCheckingAppointments] = useState(true);
+  const [bookingEnabled, setBookingEnabled] = useState(true);
+  const [bookingAvailabilityMessage, setBookingAvailabilityMessage] = useState(BOOKING_UNAVAILABLE_MESSAGE);
   const [formData, setFormData] = useState({
     patientType: 'self',
     patientName: '',
@@ -143,6 +146,19 @@ export default function PatientBookAppointment() {
       setLoading(true);
       const response = await patientBookingAPI.getDoctors();
       const data = extractData(response);
+      const isBookingEnabled = data.bookingEnabled !== false;
+      setBookingEnabled(isBookingEnabled);
+      setBookingAvailabilityMessage(data.message || BOOKING_UNAVAILABLE_MESSAGE);
+      if (!isBookingEnabled) {
+        setDoctors(data.doctors || []);
+        setAvailableDates([]);
+        setAvailableSlots([]);
+        setSlotsWithCounts([]);
+        setSelectedDoctor('');
+        setSelectedDate('');
+        setSelectedSlot('');
+        return;
+      }
       setDoctors(data.doctors || []);
     } catch (error) {
       // Suppress CanceledError (expected from request throttling)
@@ -161,6 +177,15 @@ export default function PatientBookAppointment() {
         doctorId: selectedDoctor
       });
       const data = extractData(response);
+      if (data.bookingEnabled === false) {
+        setBookingEnabled(false);
+        setBookingAvailabilityMessage(data.message || BOOKING_UNAVAILABLE_MESSAGE);
+        setAvailableDates([]);
+        setSelectedDate('');
+        setSelectedSlot('');
+        return;
+      }
+      setBookingEnabled(true);
       setAvailableDates(data.availableDates || []);
     } catch (error) {
       // Suppress CanceledError (expected from request throttling)
@@ -179,6 +204,15 @@ export default function PatientBookAppointment() {
         date: selectedDate
       });
       const data = extractData(response);
+      if (data.bookingEnabled === false) {
+        setBookingEnabled(false);
+        setBookingAvailabilityMessage(data.message || BOOKING_UNAVAILABLE_MESSAGE);
+        setAvailableSlots([]);
+        setSlotsWithCounts([]);
+        setSelectedSlot('');
+        return;
+      }
+      setBookingEnabled(true);
       // Use new format with counts if available, otherwise fallback to old format
       if (data.slotsWithCounts) {
         setSlotsWithCounts(data.slotsWithCounts);
@@ -241,6 +275,11 @@ export default function PatientBookAppointment() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+
+    if (!bookingEnabled) {
+      toast.error(bookingAvailabilityMessage);
+      return;
+    }
     
     if (!selectedDoctor || !selectedDate || !selectedSlot) {
       toast.error('Please select doctor, date, and time slot');
@@ -344,6 +383,33 @@ export default function PatientBookAppointment() {
                       variant="outline"
                       onClick={() => navigate('/patient/dashboard')}
                       className="border-red-200 text-red-700 hover:bg-red-100"
+                    >
+                      Back to Dashboard
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        ) : !bookingEnabled ? (
+          <Card className="mb-8 bg-amber-50 border-amber-200">
+            <CardContent className="p-6">
+              <div className="flex items-start gap-3">
+                <div className="p-3 bg-amber-100 rounded-full">
+                  <Clock className="h-6 w-6 text-amber-700" />
+                </div>
+                <div className="flex-1">
+                  <h3 className="text-xl font-semibold text-amber-900 mb-1">
+                    Booking Temporarily Unavailable
+                  </h3>
+                  <p className="text-sm text-amber-800">
+                    {bookingAvailabilityMessage}
+                  </p>
+                  <div className="mt-4">
+                    <Button
+                      variant="outline"
+                      onClick={() => navigate('/patient/dashboard')}
+                      className="border-amber-300 text-amber-800 hover:bg-amber-100"
                     >
                       Back to Dashboard
                     </Button>
