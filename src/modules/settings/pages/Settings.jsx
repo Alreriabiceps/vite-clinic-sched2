@@ -274,11 +274,37 @@ const Settings = () => {
     }));
   };
 
-  const handleBookingAvailabilityChange = (enabled) => {
-    setClinicSettings(prev => ({
-      ...prev,
+  const handleBookingAvailabilityChange = async (enabled) => {
+    const previousSettings = clinicSettings;
+    const nextSettings = {
+      ...clinicSettings,
       bookingEnabled: enabled
-    }));
+    };
+
+    setClinicSettings(nextSettings);
+    setClinicMessage('');
+    setClinicLoading(true);
+
+    try {
+      const response = await settingsAPI.updateClinicSettings(nextSettings);
+      const savedSettings = extractData(response) || nextSettings;
+      const normalizedSettings = {
+        ...savedSettings,
+        bookingEnabled: savedSettings.bookingEnabled !== false
+      };
+
+      setClinicSettings(prev => ({ ...prev, ...normalizedSettings }));
+      localStorage.setItem('clinic_settings', JSON.stringify(normalizedSettings));
+      window.dispatchEvent(new Event('clinicSettingsUpdated'));
+      toast.success(enabled ? 'Patient booking enabled' : 'Patient booking disabled');
+    } catch (error) {
+      setClinicSettings(previousSettings);
+      const errorMsg = handleAPIError(error) || 'Failed to update booking availability';
+      setClinicMessage(errorMsg);
+      toast.error(errorMsg);
+    } finally {
+      setClinicLoading(false);
+    }
   };
 
   const handleDoctorHoursChange = (doctorType, day, field, value) => {
@@ -413,9 +439,10 @@ const Settings = () => {
                 role="switch"
                 aria-checked={clinicSettings.bookingEnabled !== false}
                 onClick={() => handleBookingAvailabilityChange(clinicSettings.bookingEnabled === false)}
+                disabled={clinicLoading}
                 className={`relative inline-flex h-7 w-14 shrink-0 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
                   clinicSettings.bookingEnabled !== false ? 'bg-green-600' : 'bg-gray-400'
-                }`}
+                } ${clinicLoading ? 'cursor-not-allowed opacity-70' : ''}`}
               >
                 <span
                   className={`inline-block h-6 w-6 transform rounded-full bg-white shadow transition-transform ${

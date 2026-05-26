@@ -91,7 +91,7 @@ export default function PatientBookAppointment() {
   // Listen for clinic settings updates to refresh available dates
   useEffect(() => {
     const handleSettingsUpdated = () => {
-      // Refresh available dates when settings are updated
+      fetchDoctors();
       if (selectedDoctor) {
         fetchAvailableDates();
         if (selectedDate) {
@@ -99,16 +99,18 @@ export default function PatientBookAppointment() {
         }
       }
     };
-
-    window.addEventListener('clinicSettingsUpdated', handleSettingsUpdated);
-    window.addEventListener('storage', (e) => {
+    const handleStorageChange = (e) => {
       if (e.key === 'clinic_settings') {
         handleSettingsUpdated();
       }
-    });
+    };
+
+    window.addEventListener('clinicSettingsUpdated', handleSettingsUpdated);
+    window.addEventListener('storage', handleStorageChange);
 
     return () => {
       window.removeEventListener('clinicSettingsUpdated', handleSettingsUpdated);
+      window.removeEventListener('storage', handleStorageChange);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedDoctor, selectedDate]);
@@ -261,16 +263,19 @@ export default function PatientBookAppointment() {
     }));
   };
 
-  const getMinDate = () => {
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    return tomorrow.toISOString().split('T')[0];
+  const formatDateInputValue = (date) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
   };
+
+  const getMinDate = () => formatDateInputValue(new Date());
 
   const getMaxDate = () => {
     const maxDate = new Date();
     maxDate.setMonth(maxDate.getMonth() + 3); // 3 months ahead
-    return maxDate.toISOString().split('T')[0];
+    return formatDateInputValue(maxDate);
   };
 
   const handleSubmit = async (e) => {
@@ -643,6 +648,10 @@ export default function PatientBookAppointment() {
               {loading ? (
                 <div className="flex justify-center py-8">
                   <LoadingSpinner />
+                </div>
+              ) : doctors.length === 0 ? (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+                  No doctors are available for online booking right now. Please ask an admin to check the clinic booking settings.
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
