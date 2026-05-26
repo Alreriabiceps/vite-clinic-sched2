@@ -288,7 +288,7 @@ export default function Appointments() {
   const [searchTerm, setSearchTerm] = useState("");
   const [viewMode, setViewMode] = useState("table"); // 'table', 'calendar', or 'timeblocks'
   const [statusFilter, setStatusFilter] = useState("all"); // 'active', 'completed', 'all'
-  const [dateRange, setDateRange] = useState("all"); // 'today', 'week', 'month', 'all'
+  const [dateRange, setDateRange] = useState("all"); // 'today', 'advance', 'week', 'month', 'all'
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage] = useState(10); // Fixed items per page
   // Calendar current view (kept for calendar mode)
@@ -724,8 +724,8 @@ export default function Appointments() {
       const doctors = getDoctorNames();
       const timeBlocksData = {};
 
-      // Map 'all' to 'month' for time blocks context
-      const period = dateRange === 'all' ? 'month' : dateRange;
+      // Advance bookings are still part of today's clinic schedule.
+      const period = dateRange === 'all' ? 'month' : dateRange === 'advance' ? 'today' : dateRange;
 
       if (period === "today") {
         // Fetch today's slots
@@ -1255,6 +1255,55 @@ export default function Appointments() {
     });
   };
 
+  const parseDateOnly = (dateValue) => {
+    if (!dateValue) return null;
+
+    let date;
+    if (dateValue instanceof Date) {
+      date = new Date(
+        dateValue.getFullYear(),
+        dateValue.getMonth(),
+        dateValue.getDate()
+      );
+    } else if (typeof dateValue === "string") {
+      const [year, month, day] = dateValue.split("T")[0].split("-");
+      if (!year || !month || !day) return null;
+      date = new Date(
+        parseInt(year, 10),
+        parseInt(month, 10) - 1,
+        parseInt(day, 10)
+      );
+    } else {
+      const parsed = new Date(dateValue);
+      date = new Date(
+        parsed.getFullYear(),
+        parsed.getMonth(),
+        parsed.getDate()
+      );
+    }
+
+    return isNaN(date.getTime()) ? null : date;
+  };
+
+  const parseTimestampDateOnly = (dateValue) => {
+    if (!dateValue) return null;
+
+    const parsed = dateValue instanceof Date ? new Date(dateValue) : new Date(dateValue);
+    if (isNaN(parsed.getTime())) return null;
+
+    return new Date(
+      parsed.getFullYear(),
+      parsed.getMonth(),
+      parsed.getDate()
+    );
+  };
+
+  const getTodayStart = () => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return today;
+  };
+
   const parseAppointmentDateTime = (appointment) => {
     const date = new Date(appointment.appointmentDate);
     if (appointment.appointmentTime) {
@@ -1363,80 +1412,42 @@ export default function Appointments() {
       return searchMatch && doctorMatch && matchesStatus;
     }
 
-    // Parse appointment date and normalize to start of day
-    // Handle both Date objects and ISO strings from API
-    if (!appointment.appointmentDate) {
-      return false; // Skip appointments without dates
-    }
-
-    let appointmentDate;
-    try {
-      // Handle different date formats from API
-      if (appointment.appointmentDate instanceof Date) {
-        // Already a Date object
-        appointmentDate = new Date(appointment.appointmentDate);
-      } else if (typeof appointment.appointmentDate === "string") {
-        // Handle ISO string format (e.g., "2025-12-09" or "2025-12-09T00:00:00.000Z")
-        const datePart = appointment.appointmentDate.split("T")[0];
-        const [year, month, day] = datePart.split("-");
-        if (!year || !month || !day) {
-          return false; // Invalid date format
-        }
-        appointmentDate = new Date(
-          parseInt(year, 10),
-          parseInt(month, 10) - 1,
-          parseInt(day, 10)
-        );
-      } else {
-        // Try to parse as Date
-        appointmentDate = new Date(appointment.appointmentDate);
-      }
-
-      // Check if date is valid
-      if (isNaN(appointmentDate.getTime())) {
-        console.warn("Invalid appointment date:", appointment.appointmentDate, appointment._id);
-        return false;
-      }
-
-      // Normalize to start of day (UTC to avoid timezone issues)
-      appointmentDate.setUTCHours(0, 0, 0, 0);
-    } catch (error) {
-      console.error("Error parsing appointment date:", appointment.appointmentDate, error, appointment._id);
+    const appointmentDate = parseDateOnly(appointment.appointmentDate);
+    if (!appointmentDate) {
+      console.warn("Invalid appointment date:", appointment.appointmentDate, appointment._id);
       return false; // Skip appointments with invalid dates
     }
 
-    // Use UTC dates for consistent comparison
-    const today = new Date();
-    today.setUTCHours(0, 0, 0, 0);
+    const today = getTodayStart();
+    const bookedDate = parseTimestampDateOnly(appointment.createdAt);
 
     let matchesDateRange = false;
 
     if (dateRange === "today") {
-      // Compare UTC dates
       matchesDateRange =
-        appointmentDate.getUTCDate() === today.getUTCDate() &&
-        appointmentDate.getUTCMonth() === today.getUTCMonth() &&
-        appointmentDate.getUTCFullYear() === today.getUTCFullYear();
+        appointmentDate.getTime() === today.getTime() &&
+        bookedDate?.getTime() === today.getTime();
+    } else if (dateRange === "advance") {
+      matchesDateRange =
+        appointmentDate.getTime() === today.getTime() &&
+        !!bookedDate &&
+        bookedDate.getTime() < today.getTime();
     } else if (dateRange === "week") {
-      // Get start of week (Sunday = 0) in UTC
       const weekStart = new Date(today);
-      const dayOfWeek = today.getUTCDay();
-      weekStart.setUTCDate(today.getUTCDate() - dayOfWeek);
-      weekStart.setUTCHours(0, 0, 0, 0);
+      weekStart.setDate(today.getDate() - today.getDay());
+      weekStart.setHours(0, 0, 0, 0);
 
-      // Get end of week (Saturday) in UTC
       const weekEnd = new Date(weekStart);
-      weekEnd.setUTCDate(weekStart.getUTCDate() + 6);
-      weekEnd.setUTCHours(23, 59, 59, 999);
+      weekEnd.setDate(weekStart.getDate() + 6);
+      weekEnd.setHours(23, 59, 59, 999);
 
       matchesDateRange =
         appointmentDate.getTime() >= weekStart.getTime() && 
         appointmentDate.getTime() <= weekEnd.getTime();
     } else if (dateRange === "month") {
-      // Check if appointment is in current month and year (UTC)
       matchesDateRange =
-        appointmentDate.getUTCMonth() === today.getUTCMonth() &&
-        appointmentDate.getUTCFullYear() === today.getUTCFullYear();
+        appointmentDate.getMonth() === today.getMonth() &&
+        appointmentDate.getFullYear() === today.getFullYear();
     }
 
     return searchMatch && doctorMatch && matchesStatus && matchesDateRange;
@@ -1517,11 +1528,15 @@ export default function Appointments() {
               aptDate.setHours(0, 0, 0, 0);
               const today = new Date();
               today.setHours(0, 0, 0, 0);
+              const bookedDate = parseTimestampDateOnly(apt.createdAt);
               
               if (dateRange === "today") {
-                dateMatch = aptDate.getDate() === today.getDate() && 
-                           aptDate.getMonth() === today.getMonth() && 
-                           aptDate.getFullYear() === today.getFullYear();
+                dateMatch = aptDate.getTime() === today.getTime() &&
+                            bookedDate?.getTime() === today.getTime();
+              } else if (dateRange === "advance") {
+                dateMatch = aptDate.getTime() === today.getTime() &&
+                            !!bookedDate &&
+                            bookedDate.getTime() < today.getTime();
               } else if (dateRange === "week") {
                 const weekStart = new Date(today);
                 weekStart.setDate(today.getDate() - today.getDay());
@@ -2193,8 +2208,8 @@ export default function Appointments() {
               </button>
             </div>
 
-            {/* Simplified Date Range Filters */}
-            <div className="flex gap-2">
+            {/* Booking Date Filters */}
+            <div className="flex flex-wrap gap-2">
               <Button
                 className={`flex items-center gap-2 h-9 px-3 text-sm font-medium border-2 rounded-md transition-colors duration-150 ${dateRange === "today"
                   ? "bg-gray-200 text-black border-black"
@@ -2204,7 +2219,18 @@ export default function Appointments() {
                 onClick={() => setDateRange("today")}
               >
                 <CalendarIcon className="h-4 w-4" />
-                Today
+                Today Booking
+              </Button>
+              <Button
+                className={`flex items-center gap-2 h-9 px-3 text-sm font-medium border-2 rounded-md transition-colors duration-150 ${dateRange === "advance"
+                  ? "bg-gray-200 text-black border-black"
+                  : "bg-white text-black border-black hover:bg-gray-100"
+                  }`}
+                variant="ghost"
+                onClick={() => setDateRange("advance")}
+              >
+                <CalendarIcon className="h-4 w-4" />
+                Advance Booking
               </Button>
               <Button
                 className={`flex items-center gap-2 h-9 px-3 text-sm font-medium border-2 rounded-md transition-colors duration-150 ${dateRange === "week"
@@ -2380,7 +2406,7 @@ export default function Appointments() {
                     Doctor Time Blocks
                   </CardTitle>
                   <CardDescription className="text-muted-gold text-sm mt-1">
-                    {(dateRange === "today") &&
+                    {(dateRange === "today" || dateRange === "advance") &&
                       new Date().toLocaleDateString("en-US", {
                         weekday: "long",
                         year: "numeric",
@@ -2431,7 +2457,7 @@ export default function Appointments() {
                           </CardHeader>
                           <CardContent>
                             <p className="text-sm text-gray-500">
-                              No schedule for {dateRange === "today" ? "today" : dateRange === "week" ? "this week" : "this month"}
+                              No schedule for {dateRange === "today" || dateRange === "advance" ? "today" : dateRange === "week" ? "this week" : "this month"}
                             </p>
                           </CardContent>
                         </Card>
@@ -2499,7 +2525,7 @@ export default function Appointments() {
                           </div>
 
                           {/* Time Blocks Display */}
-                          {dateRange === "today" && (
+                          {(dateRange === "today" || dateRange === "advance") && (
                             <div className="space-y-3">
                               <div>
                                 <h4 className="text-sm font-semibold text-gray-700 mb-2">
@@ -3221,8 +3247,10 @@ export default function Appointments() {
                             : "Pediatric Specialist"}{" "}
                           •
                           {dateRange === "today"
-                            ? " Today's Schedule"
-                            : ` ${doctorAppointments.length} appointment(s)`}
+                            ? " Same-day Bookings"
+                            : dateRange === "advance"
+                              ? " Advance Bookings for Today"
+                              : ` ${doctorAppointments.length} appointment(s)`}
                         </CardDescription>
                       </CardHeader>
                       <CardContent className="space-y-3 p-4">
@@ -3231,7 +3259,11 @@ export default function Appointments() {
                             <CalendarIcon className="h-8 w-8 mx-auto mb-3 text-soft-olive-400" />
                             <p className="text-lg">
                               No appointments{" "}
-                              {dateRange === "today" ? "today" : "found"}
+                              {dateRange === "today"
+                                ? "booked today for today"
+                                : dateRange === "advance"
+                                  ? "booked in advance for today"
+                                  : "found"}
                             </p>
                           </div>
                         ) : (
@@ -3498,7 +3530,11 @@ export default function Appointments() {
                   Appointment Summary
                 </CardTitle>
                 <CardDescription className="text-muted-gold">
-                  Statistics {dateRange === "today" ? "for today" : "overview"}
+                  Statistics {dateRange === "today"
+                    ? "for same-day bookings"
+                    : dateRange === "advance"
+                      ? "for advance bookings today"
+                      : "overview"}
                 </CardDescription>
               </CardHeader>
               <CardContent className="p-4">
