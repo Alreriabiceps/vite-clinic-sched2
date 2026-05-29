@@ -102,7 +102,7 @@ export function debounce(func, wait) {
   };
 }
 
-export function generateTimeSlots(startTime, endTime, interval = 30) {
+export function generateTimeSlots(startTime, endTime, interval = 10) {
   const slots = [];
   const [startHour, startMin] = startTime.split(':').map(Number);
   const [endHour, endMin] = endTime.split(':').map(Number);

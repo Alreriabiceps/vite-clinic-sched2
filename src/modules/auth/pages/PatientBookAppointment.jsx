@@ -28,6 +28,7 @@ export default function PatientBookAppointment() {
   const [selectedDoctor, setSelectedDoctor] = useState('');
   const [selectedDate, setSelectedDate] = useState('');
   const [selectedSlot, setSelectedSlot] = useState('');
+  const [bookingMode, setBookingMode] = useState('today');
   const [existingAppointment, setExistingAppointment] = useState(null);
   const [checkingAppointments, setCheckingAppointments] = useState(true);
   const [bookingEnabled, setBookingEnabled] = useState(true);
@@ -69,14 +70,22 @@ export default function PatientBookAppointment() {
   }, [patient, authLoading, navigate]);
 
   useEffect(() => {
-    if (selectedDoctor) {
-      fetchAvailableDates();
-    } else {
+    if (!selectedDoctor) {
       setAvailableDates([]);
       setSelectedDate('');
       setSelectedSlot('');
+      return;
     }
-  }, [selectedDoctor]);
+
+    setSelectedSlot('');
+    if (bookingMode === 'today') {
+      setAvailableDates([]);
+      setSelectedDate(formatDateInputValue(new Date()));
+    } else {
+      setSelectedDate('');
+      fetchAvailableDates();
+    }
+  }, [selectedDoctor, bookingMode]);
 
   useEffect(() => {
     if (selectedDoctor && selectedDate) {
@@ -86,14 +95,18 @@ export default function PatientBookAppointment() {
       setSlotsWithCounts([]);
       setSelectedSlot('');
     }
-  }, [selectedDoctor, selectedDate]);
+  }, [selectedDoctor, selectedDate, bookingMode]);
 
   // Listen for clinic settings updates to refresh available dates
   useEffect(() => {
     const handleSettingsUpdated = () => {
       fetchDoctors();
       if (selectedDoctor) {
-        fetchAvailableDates();
+        if (bookingMode === 'today') {
+          setSelectedDate(formatDateInputValue(new Date()));
+        } else {
+          fetchAvailableDates();
+        }
         if (selectedDate) {
           fetchAvailableSlots();
         }
@@ -113,7 +126,7 @@ export default function PatientBookAppointment() {
       window.removeEventListener('storage', handleStorageChange);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedDoctor, selectedDate]);
+  }, [selectedDoctor, selectedDate, bookingMode]);
 
   const checkExistingAppointments = async () => {
     try {
@@ -188,7 +201,12 @@ export default function PatientBookAppointment() {
         return;
       }
       setBookingEnabled(true);
-      setAvailableDates(data.availableDates || []);
+      const dates = data.availableDates || [];
+      setAvailableDates(
+        bookingMode === 'advance'
+          ? dates.filter((date) => date >= getMinAdvanceDate())
+          : dates
+      );
     } catch (error) {
       // Suppress CanceledError (expected from request throttling)
       if (error?.code !== 'ERR_CANCELED' && error?.name !== 'CanceledError' && !error?.silent) {
@@ -203,7 +221,8 @@ export default function PatientBookAppointment() {
     try {
       const response = await patientBookingAPI.getAvailableSlots({
         doctorId: selectedDoctor,
-        date: selectedDate
+        date: selectedDate,
+        bookingType: bookingMode
       });
       const data = extractData(response);
       if (data.bookingEnabled === false) {
@@ -270,7 +289,13 @@ export default function PatientBookAppointment() {
     return `${year}-${month}-${day}`;
   };
 
-  const getMinDate = () => formatDateInputValue(new Date());
+  const getTodayDate = () => formatDateInputValue(new Date());
+
+  const getMinAdvanceDate = () => {
+    const date = new Date();
+    date.setDate(date.getDate() + 1);
+    return formatDateInputValue(date);
+  };
 
   const getMaxDate = () => {
     const maxDate = new Date();
@@ -291,7 +316,12 @@ export default function PatientBookAppointment() {
       return;
     }
 
-    if (!availableDates.includes(selectedDate)) {
+    if (bookingMode === 'today' && selectedDate !== getTodayDate()) {
+      toast.error('Today booking must use today\'s date');
+      return;
+    }
+
+    if (bookingMode === 'advance' && !availableDates.includes(selectedDate)) {
       toast.error('Please select an available date for this doctor');
       return;
     }
@@ -309,6 +339,7 @@ export default function PatientBookAppointment() {
         appointmentDate: selectedDate,
         appointmentTime: selectedSlot,
         serviceType: selectedDoctorInfo?.specialty || 'General Consultation',
+        bookingType: bookingMode,
         patientType: formData.patientType,
         patientName: formData.patientName.trim(),
         contactNumber: formData.contactNumber.trim(),
@@ -715,11 +746,59 @@ export default function PatientBookAppointment() {
               </CardHeader>
               <CardContent className="space-y-6">
                 <div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-5">
+                    <button
+                      type="button"
+                      onClick={() => setBookingMode('today')}
+                      className={`p-4 border-2 rounded-lg text-left transition-colors ${
+                        bookingMode === 'today'
+                          ? 'border-clinic-600 bg-clinic-50 text-clinic-700'
+                          : 'border-gray-200 hover:border-gray-300 text-gray-700'
+                      }`}
+                    >
+                      <span className="block text-sm font-semibold uppercase tracking-wide">Today Booking</span>
+                      <span className="block text-xs mt-1 text-gray-500">
+                        {new Date().toLocaleDateString('en-US', {
+                          weekday: 'long',
+                          month: 'short',
+                          day: 'numeric'
+                        })}
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setBookingMode('advance')}
+                      className={`p-4 border-2 rounded-lg text-left transition-colors ${
+                        bookingMode === 'advance'
+                          ? 'border-clinic-600 bg-clinic-50 text-clinic-700'
+                          : 'border-gray-200 hover:border-gray-300 text-gray-700'
+                      }`}
+                    >
+                      <span className="block text-sm font-semibold uppercase tracking-wide">Advance Booking</span>
+                      <span className="block text-xs mt-1 text-gray-500">Tomorrow onward</span>
+                    </button>
+                  </div>
+
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     Select Date
                     <span className="block text-xs text-muted-gold italic font-normal">Pumili ng Petsa</span>
                   </label>
-                  {availableDates.length > 0 && (
+                  {bookingMode === 'today' && (
+                    <div className="mb-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                      <p className="text-sm text-blue-800 font-medium">
+                        Today for {selectedDoctorInfo?.name?.startsWith('Dr.') ? selectedDoctorInfo.name : `Dr. ${selectedDoctorInfo?.name}`}
+                      </p>
+                      <p className="text-sm text-blue-600 mt-1">
+                        {new Date().toLocaleDateString('en-US', {
+                          weekday: 'long',
+                          month: 'long',
+                          day: 'numeric',
+                          year: 'numeric'
+                        })}
+                      </p>
+                    </div>
+                  )}
+                  {bookingMode === 'advance' && availableDates.length > 0 && (
                     <div className="mb-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
                       <p className="text-sm text-blue-800 font-medium">
                         📅 Available dates for {selectedDoctorInfo?.name?.startsWith('Dr.') ? selectedDoctorInfo.name : `Dr. ${selectedDoctorInfo?.name}`}:
@@ -730,12 +809,13 @@ export default function PatientBookAppointment() {
                     </div>
                   )}
                   
+                  {bookingMode === 'advance' && (
                   <div className="space-y-3">
                     <Input
                       type="date"
                       value={selectedDate}
                       onChange={(e) => setSelectedDate(e.target.value)}
-                      min={getMinDate()}
+                      min={getMinAdvanceDate()}
                       max={getMaxDate()}
                       required
                       className={selectedDate && !availableDates.includes(selectedDate) ? 'border-red-300 focus:border-red-500 focus:ring-red-500' : ''}
@@ -754,7 +834,7 @@ export default function PatientBookAppointment() {
                         </p>
                         <div className="grid grid-cols-3 md:grid-cols-5 gap-2 max-h-40 overflow-y-auto border border-gray-200 rounded-lg p-3">
                           {availableDates.slice(0, 15).map((date) => {
-                            const dateObj = new Date(date);
+                            const dateObj = new Date(`${date}T12:00:00`);
                             const dayName = dateObj.toLocaleDateString('en-US', { weekday: 'short' });
                             const dayNumber = dateObj.getDate();
                             const monthName = dateObj.toLocaleDateString('en-US', { month: 'short' });
@@ -785,6 +865,7 @@ export default function PatientBookAppointment() {
                       </div>
                     )}
                   </div>
+                  )}
                 </div>
 
                 {selectedDate && (

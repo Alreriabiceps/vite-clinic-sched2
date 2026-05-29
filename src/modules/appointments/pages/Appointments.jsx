@@ -381,8 +381,7 @@ export default function Appointments() {
     document.addEventListener("mouseup", handleMouseUp);
   };
 
-  // Helper function to add 30 minutes to a time string
-  const add30Minutes = (timeString) => {
+  const add10Minutes = (timeString) => {
     // Parse time string like "01:00 PM" or "09:30 AM"
     const [time, period] = timeString.split(" ");
     const [hours, minutes] = time.split(":").map(Number);
@@ -391,8 +390,7 @@ export default function Appointments() {
     if (period === "PM" && hours !== 12) totalMinutes += 12 * 60;
     if (period === "AM" && hours === 12) totalMinutes -= 12 * 60;
 
-    // Add 30 minutes
-    totalMinutes += 30;
+    totalMinutes += 10;
 
     // Convert back to 12-hour format
     let newHours = Math.floor(totalMinutes / 60);
@@ -408,26 +406,15 @@ export default function Appointments() {
     return `${newHours}:${String(newMinutes).padStart(2, "0")} ${newPeriod}`;
   };
 
-  const timeSlots = [
-    "08:00 AM",
-    "08:30 AM",
-    "09:00 AM",
-    "09:30 AM",
-    "10:00 AM",
-    "10:30 AM",
-    "11:00 AM",
-    "11:30 AM",
-    "12:00 PM",
-    "12:30 PM",
-    "01:00 PM",
-    "01:30 PM",
-    "02:00 PM",
-    "02:30 PM",
-    "03:00 PM",
-    "03:30 PM",
-    "04:00 PM",
-    "04:30 PM",
-  ];
+  const timeSlots = Array.from({ length: 54 }, (_, index) => {
+    const totalMinutes = 8 * 60 + index * 10;
+    const hour = Math.floor(totalMinutes / 60);
+    const min = totalMinutes % 60;
+    const ampm = hour >= 12 ? "PM" : "AM";
+    let displayHour = hour % 12;
+    if (displayHour === 0) displayHour = 12;
+    return `${displayHour}:${String(min).padStart(2, "0")} ${ampm}`;
+  });
 
   const obgyneServices = [
     "PRENATAL_CHECKUP",
@@ -724,8 +711,7 @@ export default function Appointments() {
       const doctors = getDoctorNames();
       const timeBlocksData = {};
 
-      // Advance bookings are still part of today's clinic schedule.
-      const period = dateRange === 'all' ? 'month' : dateRange === 'advance' ? 'today' : dateRange;
+      const period = dateRange === 'all' || dateRange === 'advance' ? 'month' : dateRange;
 
       if (period === "today") {
         // Fetch today's slots
@@ -1285,19 +1271,6 @@ export default function Appointments() {
     return isNaN(date.getTime()) ? null : date;
   };
 
-  const parseTimestampDateOnly = (dateValue) => {
-    if (!dateValue) return null;
-
-    const parsed = dateValue instanceof Date ? new Date(dateValue) : new Date(dateValue);
-    if (isNaN(parsed.getTime())) return null;
-
-    return new Date(
-      parsed.getFullYear(),
-      parsed.getMonth(),
-      parsed.getDate()
-    );
-  };
-
   const getTodayStart = () => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -1419,19 +1392,13 @@ export default function Appointments() {
     }
 
     const today = getTodayStart();
-    const bookedDate = parseTimestampDateOnly(appointment.createdAt);
 
     let matchesDateRange = false;
 
     if (dateRange === "today") {
-      matchesDateRange =
-        appointmentDate.getTime() === today.getTime() &&
-        bookedDate?.getTime() === today.getTime();
+      matchesDateRange = appointmentDate.getTime() === today.getTime();
     } else if (dateRange === "advance") {
-      matchesDateRange =
-        appointmentDate.getTime() === today.getTime() &&
-        !!bookedDate &&
-        bookedDate.getTime() < today.getTime();
+      matchesDateRange = appointmentDate.getTime() > today.getTime();
     } else if (dateRange === "week") {
       const weekStart = new Date(today);
       weekStart.setDate(today.getDate() - today.getDay());
@@ -1528,15 +1495,11 @@ export default function Appointments() {
               aptDate.setHours(0, 0, 0, 0);
               const today = new Date();
               today.setHours(0, 0, 0, 0);
-              const bookedDate = parseTimestampDateOnly(apt.createdAt);
               
               if (dateRange === "today") {
-                dateMatch = aptDate.getTime() === today.getTime() &&
-                            bookedDate?.getTime() === today.getTime();
+                dateMatch = aptDate.getTime() === today.getTime();
               } else if (dateRange === "advance") {
-                dateMatch = aptDate.getTime() === today.getTime() &&
-                            !!bookedDate &&
-                            bookedDate.getTime() < today.getTime();
+                dateMatch = aptDate.getTime() > today.getTime();
               } else if (dateRange === "week") {
                 const weekStart = new Date(today);
                 weekStart.setDate(today.getDate() - today.getDay());
@@ -1872,7 +1835,7 @@ export default function Appointments() {
         hour24,
         parseInt(minutes)
       );
-      const endDate = new Date(startDate.getTime() + 30 * 60 * 1000); // 30 minutes later
+      const endDate = new Date(startDate.getTime() + 10 * 60 * 1000);
 
       return {
         id: appointment._id,
@@ -2008,7 +1971,7 @@ export default function Appointments() {
       
       // Auto-calculate end time when appointment time changes
       if (name === "appointmentTime" && value) {
-        updated.endTime = add30Minutes(value);
+        updated.endTime = add10Minutes(value);
       }
       
       // When doctor changes, reset service type to the first available option for that doctor
@@ -2406,7 +2369,7 @@ export default function Appointments() {
                     Doctor Time Blocks
                   </CardTitle>
                   <CardDescription className="text-muted-gold text-sm mt-1">
-                    {(dateRange === "today" || dateRange === "advance") &&
+                    {dateRange === "today" &&
                       new Date().toLocaleDateString("en-US", {
                         weekday: "long",
                         year: "numeric",
@@ -2429,7 +2392,7 @@ export default function Appointments() {
                         year: "numeric",
                       })}`;
                     })()}
-                    {(dateRange === "month" || dateRange === "all") &&
+                    {(dateRange === "advance" || dateRange === "month" || dateRange === "all") &&
                       new Date().toLocaleDateString("en-US", {
                         month: "long",
                         year: "numeric",
@@ -2457,7 +2420,7 @@ export default function Appointments() {
                           </CardHeader>
                           <CardContent>
                             <p className="text-sm text-gray-500">
-                              No schedule for {dateRange === "today" || dateRange === "advance" ? "today" : dateRange === "week" ? "this week" : "this month"}
+                              No schedule for {dateRange === "today" ? "today" : dateRange === "week" ? "this week" : "this month"}
                             </p>
                           </CardContent>
                         </Card>
@@ -2525,7 +2488,7 @@ export default function Appointments() {
                           </div>
 
                           {/* Time Blocks Display */}
-                          {(dateRange === "today" || dateRange === "advance") && (
+                          {dateRange === "today" && (
                             <div className="space-y-3">
                               <div>
                                 <h4 className="text-sm font-semibold text-gray-700 mb-2">
@@ -2565,7 +2528,7 @@ export default function Appointments() {
                           )}
 
                           {/* Daily Breakdown for Week/Month */}
-                          {(dateRange === "week" || dateRange === "month" || dateRange === "all") && timeBlockData.dailySummary && (
+                          {(dateRange === "advance" || dateRange === "week" || dateRange === "month" || dateRange === "all") && timeBlockData.dailySummary && (
                             <div className="space-y-3">
                               <div>
                                 <h4 className="text-sm font-semibold text-gray-700 mb-3">
@@ -3075,7 +3038,7 @@ export default function Appointments() {
                             {a.endTime
                               ? formatTime(a.endTime)
                               : a.appointmentTime
-                                ? formatTime(add30Minutes(a.appointmentTime))
+                                ? formatTime(add10Minutes(a.appointmentTime))
                                 : "—"}
                           </td>
                           <td className="px-1 py-2 border-r border-gray-100">
@@ -3247,9 +3210,9 @@ export default function Appointments() {
                             : "Pediatric Specialist"}{" "}
                           •
                           {dateRange === "today"
-                            ? " Same-day Bookings"
+                            ? " Today's Bookings"
                             : dateRange === "advance"
-                              ? " Advance Bookings for Today"
+                              ? " Advance Bookings"
                               : ` ${doctorAppointments.length} appointment(s)`}
                         </CardDescription>
                       </CardHeader>
@@ -3260,9 +3223,9 @@ export default function Appointments() {
                             <p className="text-lg">
                               No appointments{" "}
                               {dateRange === "today"
-                                ? "booked today for today"
+                                ? "for today"
                                 : dateRange === "advance"
-                                  ? "booked in advance for today"
+                                  ? "for future dates"
                                   : "found"}
                             </p>
                           </div>
@@ -3531,9 +3494,9 @@ export default function Appointments() {
                 </CardTitle>
                 <CardDescription className="text-muted-gold">
                   Statistics {dateRange === "today"
-                    ? "for same-day bookings"
+                    ? "for today's bookings"
                     : dateRange === "advance"
-                      ? "for advance bookings today"
+                      ? "for advance bookings"
                       : "overview"}
                 </CardDescription>
               </CardHeader>
@@ -3760,7 +3723,7 @@ export default function Appointments() {
                     {selectedAppointment.endTime
                       ? formatTime(selectedAppointment.endTime)
                       : formatTime(
-                        add30Minutes(selectedAppointment.appointmentTime)
+                        add10Minutes(selectedAppointment.appointmentTime)
                       )}
                   </span>
                 ) : null}
@@ -4028,22 +3991,7 @@ export default function Appointments() {
                   defaultValue={selectedAppointment.appointmentTime}
                   className="w-full p-1.5 text-sm border border-gray-300 rounded-md"
                 >
-                  {[
-                    "09:00 AM",
-                    "09:30 AM",
-                    "10:00 AM",
-                    "10:30 AM",
-                    "11:00 AM",
-                    "11:30 AM",
-                    "01:00 PM",
-                    "01:30 PM",
-                    "02:00 PM",
-                    "02:30 PM",
-                    "03:00 PM",
-                    "03:30 PM",
-                    "04:00 PM",
-                    "04:30 PM",
-                  ].map((time) => (
+                  {timeSlots.map((time) => (
                     <option key={time} value={time}>
                       {time}
                     </option>

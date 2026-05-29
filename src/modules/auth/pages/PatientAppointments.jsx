@@ -362,7 +362,7 @@ export default function PatientAppointments() {
         hour24,
         parseInt(minutes)
       );
-      const endDate = new Date(startDate.getTime() + 30 * 60 * 1000);
+      const endDate = new Date(startDate.getTime() + 10 * 60 * 1000);
 
       return {
         id: appointment._id,
